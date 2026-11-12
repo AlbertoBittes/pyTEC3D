@@ -215,7 +215,7 @@ pl.show()
 * Halve the source voltage: the iron saturates less and the two curves get closer.
 * Drive the coil by its current instead (`CURR` on the master node, `_VOLT` free): the EMF is then the only output of
   the circuit, and `VOLT = R i + EMF` gives the voltage the source must supply.
-* Use the time-integrated element type (`"element_type": "AV2D_nodal_timint"` in the model data): `VOLT` and `EMF`
+* Use the time-integrated element type (`"element_type": "AVA2D_nodal_timint"` in the model data): `VOLT` and `EMF`
   become the time integrals of the voltages; `_VOLT` must then be a ramp `V t`.
 """)
     return nb
@@ -406,10 +406,10 @@ The model is the coil and passive ring of the 2D examples, revolved about the y 
 cyclic sector. The lower ring is a 2000-turn stranded coil fed through its terminals (VOLT, EMF): first by a current
 of 100 A, then by a voltage of 10 kV. The upper ring is a passive massive conductor (A and V).
 
-With `AV3D_edge` the vector potential is discretized with **edge** (Nedelec) elements: its DOFs are the circulations
+With `AVA3D_edge` the vector potential is discretized with **edge** (Nedelec) elements: its DOFs are the circulations
 of A along the mesh edges, stored on the midside nodes of a quadratic mesh, while V, VOLT and EMF stay nodal. There is
-no Coulomb gauge term: a tree-cotree decomposition of the edges fixes the gauge. The nodal model `AV3D_nodal` solves
-the same problem with a nodal A and a penalty gauge. Theory: *Element library* (AV3D_edge, AV3D_nodal); user manual:
+no Coulomb gauge term: a tree-cotree decomposition of the edges fixes the gauge. The nodal model `AVA3D_nodal` solves
+the same problem with a nodal A and a penalty gauge. Theory: *Element library* (AVA3D_edge, AVA3D_nodal); user manual:
 *Boundary conditions* (gauging edge elements, cyclic symmetry).
 """)
     nb.code(SETUP.format(case="coil_3D_avoltemf_edge",
@@ -524,8 +524,8 @@ ring current, to the discretization error: the edge model has more A DOFs on a m
 """)
     nb.code('''
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-for ax, (label, folder, case) in zip(axes, (("edge (AV3D_edge)", WORK, "coil_3D_avoltemf_edge"),
-                                              ("nodal (AV3D_nodal)", NODAL, "coil_3D_avoltemf"))):
+for ax, (label, folder, case) in zip(axes, (("edge (AVA3D_edge)", WORK, "coil_3D_avoltemf_edge"),
+                                              ("nodal (AVA3D_nodal)", NODAL, "coil_3D_avoltemf"))):
     g = pv.wrap(meshes.read_mesh(str(folder / "output" / f"{case}_out_2.vtu"), reset_arrays=False))
     a = np.radians(15.0)
     cut = g.slice(normal=(-np.sin(a), 0.0, -np.cos(a)), origin=(0.0, 0.0, 0.0))

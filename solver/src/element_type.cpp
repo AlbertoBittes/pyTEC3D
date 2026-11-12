@@ -74,7 +74,7 @@ namespace pytec3d
         case Operation::Rhs:
             return evaluation.kind == EvaluationKind::Rhs && term.stage == Stage::Linear;
         case Operation::Nonlinear:
-            return term.stage == Stage::Tangent || term.stage == Stage::Residual;
+            return term.stage == Stage::Tangent || term.stage == Stage::Residual || term.stage == Stage::RateResidual;
         // At output: the dynamic fields, and the terms without trial of every field (e.g. Jt = Js), which read
         // the current loads.
         case Operation::NodalFields:
@@ -129,8 +129,12 @@ namespace pytec3d
         for (const formulation::LawSpec &law : spec_->laws)
             laws_ |= registry::bit(law.id);
         for (const formulation::TermSpec &term : spec_->terms)
+        {
             if (term.stage != formulation::Stage::Linear && term.trial_dt > 0)
                 law_rates_ = true;
+            if (term.stage == formulation::Stage::RateResidual)
+                rate_residuals_ = true;
+        }
 
         // The operators of the static fields: the terms of the field evaluations without law.
         for (const formulation::EvaluationSpec &evaluation : spec_->evaluations)
@@ -192,10 +196,16 @@ namespace pytec3d
                             {
                                 if (law.id != law_id)
                                     continue;
-                                const formulation::EvaluationSpec &input = spec_->evaluations[static_cast<std::size_t>(law.input)];
-                                for (unsigned int i = input.first_term; i < input.first_term + input.n_terms; ++i)
-                                    if (active(spec_->terms[i], domain))
-                                        add_kernel(spec_->terms[i].kernel);
+                                for (const int evaluation : {static_cast<int>(law.input), static_cast<int>(law.inputs[0]),
+                                                             static_cast<int>(law.inputs[1])})
+                                {
+                                    if (evaluation < 0)
+                                        continue;
+                                    const formulation::EvaluationSpec &input = spec_->evaluations[static_cast<std::size_t>(evaluation)];
+                                    for (unsigned int i = input.first_term; i < input.first_term + input.n_terms; ++i)
+                                        if (active(spec_->terms[i], domain))
+                                            add_kernel(spec_->terms[i].kernel);
+                                }
                             }
                         }
                     // Terms without nabla (a coefficient alone) still need the quadrature points.

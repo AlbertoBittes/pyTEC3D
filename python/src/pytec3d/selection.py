@@ -371,30 +371,46 @@ def set_value_on_selection(
     mesh: vtkUnstructuredGrid,
     array_name: str,
     value: Any,
-    component: int = 0,
+    component: int | None = 0,
     location: Location = "node",
 ) -> None:
     """Set ``value`` in the array at the selected points or cells.
 
+    ``value`` is one value for all of them, or one value per selected point or cell, in increasing id order (the
+    order of :func:`selected_ids` and :func:`get_selection_values`), e.g. the edge values of a field on the selected
+    midside points.
+
     Args:
         mesh: The mesh.
         array_name: Array to write.
-        value: Value to set.
-        component: Component of a vector array.
+        value: A scalar; or an array of shape (number of selected ids,), one value each. With ``component=None``
+            (all the components of a vector array): a vector of the array's components (the same for all), or an
+            array of shape (number of selected ids, components).
+        component: Component of a vector array, or None for all of them.
         location: ``"node"`` or ``"elem"``.
 
     Raises:
         MissingArrayError: If the mesh has no array ``array_name`` at ``location``.
+        ValueError: If ``value`` does not match the selection.
     """
     array = meshes.get_array(mesh, array_name, location)
     values = vtknp.vtk_to_numpy(array)
     ids = selected_ids(mesh, location)
-    if values.ndim == 1:
-        values[ids] = value
+    target_shape = (ids.size,) if values.ndim == 1 or component is not None else (ids.size, values.shape[1])
+    data = np.asarray(value, dtype=float if values.dtype.kind == "f" else values.dtype)
+    if data.ndim > 0:
+        try:
+            data = np.broadcast_to(data, target_shape)
+        except ValueError:
+            raise ValueError(f"set_value_on_selection({array_name!r}): {data.shape} values for {target_shape} "
+                             f"(one value, or one per selected {'point' if location == 'node' else 'cell'}).") from None
+    if values.ndim == 1 or component is None:
+        values[ids] = data
     else:
-        values[ids, component] = value
+        values[ids, component] = data
     array.Modified()
-    LOGGER.debug("%s[%s] = %r on %d %s.", array_name, component, value, ids.size,
+    LOGGER.debug("%s[%s] = %s on %d %s.", array_name, component,
+                 repr(value) if data.ndim == 0 else f"{data.shape} values", ids.size,
                  "points" if location == "node" else "cells")
 
 

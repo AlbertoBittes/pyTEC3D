@@ -15,10 +15,10 @@
 #
 # Model data (model_data.json)
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: AV3D_edge / NON_CONDUCTING            / 2 / 0   air
-#   * 23: AV3D_edge / STRANDED_COIL             / 2 / 0   coil: edge A + VOLT + EMF
-#   * 24: AV3D_edge / SOLID_CONDUCTOR           / 2 / 0   passive ring: edge A + V
-#   * 26: AV3D_edge / HARD_MAGNETIC             / 2 / 0   iron (M = 0: soft iron) with the B-H curve
+#   * 21: AVA3D_edge / NON_CONDUCTING            / 2 / 0   air
+#   * 23: AVA3D_edge / STRANDED_COIL             / 2 / 0   coil: edge A + VOLT + EMF
+#   * 24: AVA3D_edge / SOLID_CONDUCTOR           / 2 / 0   passive ring: edge A + V
+#   * 26: AVA3D_edge / HARD_MAGNETIC             / 2 / 0   iron (M = 0: soft iron) with the B-H curve
 #   Materials: 21 air; 23 coil; 26 iron (mur = 1, replaced by the curve); 24 rho = 1.09e-7 Ohm m.
 #   Real constants 1 (set on every cell): cross_section = 0.04 m^2, turns = 2000, resistance = 20 Ohm,
 #     volume = 0.12566 m^3 (whole coil), symmetry = 12, T = (0, 1, 0) in the cylindrical element system 1.
@@ -30,7 +30,7 @@
 # Results: output/coil_3D_avoltemf_edge_ferr_out_<n>.vtu, coil_3D_avoltemf_edge_ferr_steps.csv, .log
 #
 # How to run:  cd examples/coil_3D_avoltemf_edge_ferr && python macro.py
-# Documentation: "Element library" (AV3D_edge), "User manual - Nonlinear laws, gauging edge elements".
+# Documentation: "Element library" (AVA3D_edge), "User manual - Nonlinear laws, gauging edge elements".
 # =====================================================================================================================
 
 

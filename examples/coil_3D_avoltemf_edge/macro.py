@@ -4,7 +4,7 @@
 #
 # What this example shows
 # -----------------------
-# The 30 degree cyclic-sector model of coil_3D_avoltemf (stranded coil + passive ring) with the element type AV3D_edge:
+# The 30 degree cyclic-sector model of coil_3D_avoltemf (stranded coil + passive ring) with the element type AVA3D_edge:
 # the vector potential is discretized with first-order Nedelec (edge) elements, whose DOFs are the circulations of A
 # along the mesh edges, while V, VOLT and EMF stay nodal (Lagrange). Compared with the nodal macro it shows:
 #   * edge DOFs live on the MIDSIDE nodes of a quadratic mesh: their Dirichlet value is component 2 of _A at those
@@ -23,9 +23,9 @@
 #
 # Model data (model_data.json)
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: 2 = AV3D_edge / NON_CONDUCTING            / 2 / 0   air: edge A
-#   * 23: 2 = AV3D_edge / STRANDED_COIL             / 2 / 0   coil: edge A + VOLT + EMF
-#   * 24: 2 = AV3D_edge / SOLID_CONDUCTOR           / 2 / 0   passive ring: edge A + V
+#   * 21: 2 = AVA3D_edge / NON_CONDUCTING            / 2 / 0   air: edge A
+#   * 23: 2 = AVA3D_edge / STRANDED_COIL             / 2 / 0   coil: edge A + VOLT + EMF
+#   * 24: 2 = AVA3D_edge / SOLID_CONDUCTOR           / 2 / 0   passive ring: edge A + V
 #   option2 = 2 is the order of the Lagrange fields (V, VOLT, EMF); the edge field is always first order (Nedelec).
 #   Materials: 21 air; 23 coil; 24 rho = 2e-8 Ohm m (mur = 1).
 #   Real constants 1 (set on every cell by the macro): cross_section = 0.04 m^2, turns = 2000, resistance = 20 Ohm,
@@ -38,7 +38,7 @@
 # Results: output/coil_3D_avoltemf_edge_out_<n>.vtu, coil_3D_avoltemf_edge_steps.csv, coil_3D_avoltemf_edge.log
 #
 # How to run:  cd examples/coil_3D_avoltemf_edge && python macro.py
-# Documentation: "Element library" (AV3D_edge), "User manual - gauging edge elements", "Theory - 3D edge elements".
+# Documentation: "Element library" (AVA3D_edge), "User manual - gauging edge elements", "Theory - 3D edge elements".
 # =====================================================================================================================
 
 

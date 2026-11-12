@@ -176,5 +176,5 @@ every step. For the user:
 * the solution is the same as with the base type for :math:`\theta=1` (backward Euler); for :math:`\theta<1` the two
   discretizations of the electric terms differ slightly.
 
-``_timint`` domains: ``CIRCUIT_COUPLED_CONDUCTOR`` and ``STRANDED_COIL`` in ``AV2D_nodal_timint``,
-``SOLID_CONDUCTOR`` and ``STRANDED_COIL`` in ``AV3D_nodal_timint`` and ``AV3D_edge_timint`` (:ref:`el-timint`).
+``_timint`` domains: ``CIRCUIT_COUPLED_CONDUCTOR`` and ``STRANDED_COIL`` in ``AVA2D_nodal_timint``,
+``SOLID_CONDUCTOR`` and ``STRANDED_COIL`` in ``AVA3D_nodal_timint`` and ``AVA3D_edge_timint`` (:ref:`el-timint`).

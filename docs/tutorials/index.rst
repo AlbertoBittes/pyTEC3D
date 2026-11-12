@@ -34,6 +34,28 @@ Each notebook copies its case into a temporary folder, so the repository files a
        DOFs on the midside nodes; the edge and nodal examples run as they are; coil circuit quantities, eddy current of
        the passive ring and field compared between edge and nodal elements.
 
+.. rubric:: Scalar potentials and superconductors
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Notebook
+     - What it shows
+   * - :doc:`tutorial_scalar_potential` (``core_3D_phi``)
+     - Magnetostatics with ``PHI3D_nodal``: a coil on a closed iron frame, the source current and the tree gauge of
+       Hs, the magnetization curve of the frame with a B-H curve against a linear iron and a magnetic circuit, Hs given
+       on the edges instead of solved, the saturated field. About 30 s.
+   * - :doc:`tutorial_tphi_cuts` (``ring_3D_tphi``, ``coil_core_3D_tphi``)
+     - T-phi (``TPHI3D_edge``): why a cut, how to build it (the edges of the layer, their orientation), the induced,
+       current and voltage drives of a ring and their consistency (one R, one L/R), a ring without its cut, a coil as
+       T fixed on its edges around a conducting core. About 2 minutes.
+   * - :doc:`tutorial_superconductors` (``wire_2D_tphi``, ``bulk_2D_tphi_axisym``)
+     - The 2D H-formulation (``TPHI2D_edge``) with power laws: the E-J table, the AC transport loss of a round wire
+       against Norris (current fronts, n = 10 to 100), the nonlinear settings that fail and those that work, a
+       field-cooled REBCO bulk with Jc(B) (``power_law_b``, axisymmetric): trapped field and flux creep. About
+       2 minutes.
+
 .. rubric:: Plasma simulations
 
 .. list-table::
@@ -67,6 +89,9 @@ Each notebook copies its case into a temporary folder, so the repository files a
    tutorial_stranded_coil_iron
    tutorial_coil_3d_sector
    tutorial_edge_elements
+   tutorial_scalar_potential
+   tutorial_tphi_cuts
+   tutorial_superconductors
    tutorial_iter_equilibrium
    tutorial_iter_evolution
    tutorial_iter_3d_halo
@@ -83,3 +108,4 @@ plots are rendered off screen):
    python build_tutorial_coil_2D.py ../tutorial_coil_2D.ipynb
    python build_tutorials.py ..                 # the other notebooks (or name one: stranded_coil_iron, coil_3d_sector, edge_elements)
    python build_plasma_tutorials.py ..          # iter_equilibrium, iter_evolution, iter_3d_halo (25 min)
+   python build_formulation_tutorials.py ..     # scalar_potential, tphi_cuts, superconductors (5 min)

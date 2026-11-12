@@ -6,7 +6,7 @@ Domains
 Every cell of a model belongs to one **domain**, given by the ``option1`` of the row of its ``TYPE`` in the model data
 (:doc:`../user_manual/model_data`). The domain says which physics the cell carries: whether a current can flow in it
 and how it is determined, and whether it can be magnetized. The element type then gives the unknowns and the terms of
-that physics. pyTEC3D has seven domains (``element_library/pytec3d_element_library/data/domains.json``):
+that physics. pyTEC3D has eight domains (``element_library/pytec3d_element_library/data/domains.json``):
 
 .. figure:: ../_static/field_domains.svg
    :alt: Domains of an eddy-current model: air, magnetic materials, conductors with imposed or computed current.
@@ -52,9 +52,14 @@ that physics. pyTEC3D has seven domains (``element_library/pytec3d_element_libra
      - ``STRANDED_COIL``
      - imposed shape, amplitude from the **circuit equation** of the winding
      - may be magnetized
+   * - 7
+     - ``CUT_LAYER``
+     - none (T-phi types only): a layer carrying the vector potential :math:`\mathbf{T}` without conduction, the cut
+       of a conductor with a net current or the hole of a coil given as fixed T (:ref:`theory-potentials`)
+     - as ``NON_CONDUCTING`` (its ``mur``: air or iron)
 
 The current and the magnetic behaviour are two independent attributes. The current partitions the model into
-regions without current (:math:`\Omega_0`: domains 0, 1, 2), with an imposed current density (:math:`\Omega_s`: 3 and,
+regions without current (:math:`\Omega_0`: domains 0, 1, 2 and 7), with an imposed current density (:math:`\Omega_s`: 3 and,
 with a circuit-determined amplitude, 6) and with a computed, eddy current density (:math:`\Omega_c`: 4 and 5). Any
 domain may have a saturating B-H curve (the law replaces the reluctivity of the material, :doc:`constitutive`), and
 every domain except ``NON_CONDUCTING`` and ``SOFT_MAGNETIC`` may carry a magnetization: a magnetized structure that
@@ -97,8 +102,8 @@ Unknowns of each domain
    :widths: 30 35 35
 
    * - Domain
-     - ``AV2D_nodal`` (2D)
-     - ``AV3D_nodal``, ``AV3D_edge`` (3D)
+     - ``AVA2D_nodal`` (2D)
+     - ``AVA3D_nodal``, ``AVA3D_edge`` (3D)
    * - ``NON_CONDUCTING``, ``SOFT_MAGNETIC``, ``HARD_MAGNETIC``
      - :math:`A_z`
      - :math:`\mathbf{A}`
@@ -114,6 +119,30 @@ Unknowns of each domain
    * - ``STRANDED_COIL``
      - :math:`A_z`, ``VOLT``, ``EMF``, load ``CURR``
      - :math:`\mathbf{A}`, ``VOLT``, ``EMF``, load ``CURR``
+
+The scalar-potential element types (:ref:`theory-potentials`) take a subset of the domains:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * - Domain
+     - ``PHI3D_nodal`` (3D, static)
+     - ``TPHI3D_edge``, ``TPHI2D_edge``
+   * - ``NON_CONDUCTING``, ``SOFT_MAGNETIC``, ``HARD_MAGNETIC``
+     - :math:`\phi`, :math:`\mathbf{H}_s`
+     - :math:`\phi`
+   * - ``STRANDED_CONDUCTOR``
+     - :math:`\phi`, :math:`\mathbf{H}_s`, load ``Js``
+     - not a domain (a coil is :math:`\mathbf{T}` fixed on its edges)
+   * - ``SOLID_CONDUCTOR``
+     - not a domain (static)
+     - :math:`\phi`, :math:`\mathbf{T}`, load ``VLTG`` (on a cut)
+   * - ``CUT_LAYER``
+     - not a domain
+     - :math:`\phi`, :math:`\mathbf{T}` (no conduction)
+
+``CIRCUIT_COUPLED_CONDUCTOR`` and ``STRANDED_COIL`` are not domains of these types.
 
 In the time-integrated element types (``_timint``) the electric unknowns :math:`V`, ``VOLT`` and ``EMF`` are replaced
 by their time integrals (:ref:`theory-timint`). Each element type lists the domains it accepts (``"domains"`` in

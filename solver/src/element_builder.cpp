@@ -79,7 +79,8 @@ void ElementBuilder::add_nodal_loads(const pytec3d::ElementType::FieldIndices &d
     // node frame (node_angles, like the Dirichlet values _F): f = R f_node in global, and each global component the
     // field has goes to its DOF; a component the field does not have does no work on it and is dropped. A field with
     // a single component (A_z of a 2D element, a scalar variable) ignores the node frames, as its Dirichlet values and
-    // couplings do: its component of the load goes to its DOF as given.
+    // couplings do: its component of the load goes to its DOF as given. A NEDELEC_ONE field has its edge DOF on the
+    // midside node: a scalar load there goes to it, in the orientation of the DOF (the circulation's).
     const pytec3d::ElementType &type = *elem_data.entry->type;
     const pytec3d::registry::Domain domain = elem_data.entry->domain;
     const unsigned int sys = dof_solution_system_->number();
@@ -89,14 +90,17 @@ void ElementBuilder::add_nodal_loads(const pytec3d::ElementType::FieldIndices &d
         if (field.kind != pytec3d::FieldKind::Dof || field.nodal_load == pytec3d::registry::FieldId::COUNT ||
             !pytec3d::ElementType::active(field, domain))
             continue;
-        if (field.family != libMesh::LAGRANGE && field.family != libMesh::LAGRANGE_VEC)
-            fail("the nodal load of '" + std::string(pytec3d::registry::name(field.id)) + "' needs a Lagrange field.");
+        const bool edge = field.family == libMesh::NEDELEC_ONE;
+        if (!edge && field.family != libMesh::LAGRANGE && field.family != libMesh::LAGRANGE_VEC)
+            fail("the nodal load of '" + std::string(pytec3d::registry::name(field.id)) +
+                 "' needs a Lagrange or NEDELEC_ONE field.");
         const std::string load_array(pytec3d::registry::name(field.nodal_load));
         const pytec3d::RealArray *array = arrays_->point_field(load_array);
         const std::string label(pytec3d::registry::info(field.variable).label);
         if (!array || !dof_solution_system_->has_variable(label))
             continue;
-        const bool vector = field.value == pytec3d::formulation::ValueType::Vector;
+        // An edge field: a scalar array whose value on the midside point of an edge (the node of its DOF) loads it.
+        const bool vector = !edge && field.value == pytec3d::formulation::ValueType::Vector;
         const bool single_component = vector && field.n_components == 1;
         if (array->n_components() != (vector ? 3u : 1u))
             fail("the nodal load '" + load_array + "' has " + std::to_string(array->n_components()) + " components, expected " +
@@ -283,7 +287,7 @@ void ElementBuilder::build_element_rhs()
     vectors[VectorsSet::RHS_VECTORS] = {std::move(rhs)};
 }
 
-void ElementBuilder::build_element_tangent_stiffness_residual(const TimeScheme &scheme)
+void ElementBuilder::build_element_tangent_stiffness_residual(const TimeScheme &scheme, bool picard)
 {
     DenseMatrix<Number> tangent(n_dofs, n_dofs);
     DenseVector<Number> residual(n_dofs);
@@ -298,6 +302,7 @@ void ElementBuilder::build_element_tangent_stiffness_residual(const TimeScheme &
         auto inputs = evaluator_inputs(pytec3d::Operation::Nonlinear, values, dofs);
         inputs.solution = &u;
         inputs.jacobian_scale = {1.0, scheme.c_v, scheme.c_a};
+        inputs.picard = picard;
 
         // The rates of the law terms with dt(): v = c_v u + h_v, a = c_a u + h_a (history of the step).
         DenseVector<Number> v, a;
@@ -318,10 +323,45 @@ void ElementBuilder::build_element_tangent_stiffness_residual(const TimeScheme &
         }
         pytec3d::ElementEvaluator evaluator(inputs);
         evaluator.add_nonlinear(tangent, residual);
+
+        // The rate of a law output under dt() (dt(B(H))): the time scheme applied to the output q(u) as to the DOFs,
+        // c_d q(u) (add_nonlinear) + hu_d q(u_n) (here) + hv_d q'_n + ha_d q''_n (the history the system stores per
+        // element and adds, ElementBuilder::law_output).
+        if (type.rate_residuals() && scheme.transient())
+        {
+            const DenseVector<Number> u_n = local_dof_vector(&dof_solution_system_->get_vector("_transient_old_local_solution"));
+            auto old_inputs = evaluator_inputs(pytec3d::Operation::Nonlinear, values, dofs);
+            old_inputs.solution = &u_n;
+            pytec3d::ElementEvaluator history(old_inputs);
+            history.add_law_output(residual, {0.0, scheme.hu_v, scheme.hu_a});
+        }
     }
 
     matrices[MatricesSet::TANGENT_STIFFNESS_MATRICES] = {std::move(tangent)};
     vectors[VectorsSet::RESIDUAL_VECTORS] = {std::move(residual)};
+}
+
+bool ElementBuilder::rate_residual_element() const
+{
+    return nonlinear_element() && elem_data.entry->type->rate_residuals();
+}
+
+DenseVector<Number> ElementBuilder::law_output(const libMesh::NumericVector<Number> &solution, unsigned int order)
+{
+    DenseVector<Number> out(n_dofs);
+    if (!rate_residual_element() || order < 1 || order > 2)
+        return out;
+    const pytec3d::ElementType &type = *elem_data.entry->type;
+    pytec3d::ElementParameterValues values(type, parameter_inputs());
+    const auto dofs = type.element_indices(*dof_solution_system_, *elem_data.elem, pytec3d::FieldKind::Dof, elem_data.entry->domain);
+    const DenseVector<Number> x = local_dof_vector(&solution);
+    auto inputs = evaluator_inputs(pytec3d::Operation::Nonlinear, values, dofs);
+    inputs.solution = &x;
+    std::array<libMesh::Real, 3> scale = {0.0, 0.0, 0.0};
+    scale[order] = 1.0;
+    pytec3d::ElementEvaluator evaluator(inputs);
+    evaluator.add_law_output(out, scale);
+    return out;
 }
 
 void ElementBuilder::build_nodal_solution()

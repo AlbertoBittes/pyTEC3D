@@ -34,6 +34,7 @@ libMesh (:libmesh:`NewtonSolver`) [Kirk2006]_.
            "require_residual_reduction": False,
            "require_finite_residual": True,
            "brent_line_search": True,    # False: plain backtracking
+           "picard": False,              # True: the Jacobian of the laws is their secant
            "minimum_step_length": 1e-5,  # in (0, 1]
            "linear_tolerance_multiplier": 1e-3,
            "continue_after_max_iterations": True,
@@ -128,6 +129,10 @@ Used when at least one cell has a nonlinear law (:doc:`nonlinear`, :ref:`theory-
      - Stop on NaN / Inf residuals.
    * - ``brent_line_search``
      - Line search by Brent's method [Brent1973]_ (True) or plain backtracking (False).
+   * - ``picard``
+     - Picard iteration (True): the Jacobian of each law is its secant, the tangent part dropped, so that a full step
+       is :math:`u_{k+1}=K_s(u_k)^{-1}f`; the residual, tolerances and line search are those of Newton. It converges
+       linearly, but it can be more robust far from the solution (steep laws).
    * - ``minimum_step_length``
      - Smallest step of the line search, in (0, 1].
    * - ``linear_tolerance_multiplier``

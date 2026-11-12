@@ -184,7 +184,8 @@ def check_solver_settings(settings: Mapping[str, Any]) -> None:
         problems.append(f"nonlinear.minimum_step_length must be in (0, 1], got {step!r}.")
     positive(nonlinear, "nonlinear", "linear_tolerance_multiplier")
     flags(nonlinear, "nonlinear", ("require_residual_reduction", "require_finite_residual", "brent_line_search",
-                                   "continue_after_max_iterations", "continue_after_backtrack_failure", "verbose"))
+                                   "picard", "continue_after_max_iterations", "continue_after_backtrack_failure",
+                                   "verbose"))
 
     options = settings.get("petsc_options", {})
     if not isinstance(options, Mapping):
@@ -515,6 +516,20 @@ class _ModelChecker:
             if element_type is not None and domain is not None and order in (1, 2) and axisymmetric in (0, 1):
                 resolved[type_id] = {"element_type": element_type, "axisymmetric": int(axisymmetric)}
 
+        # Types that cannot run second order ("second_order": false in the library, e.g. T-phi: its PHI gradients must
+        # lie in the first-order Nedelec space of T and Hs, the Whitney pair).
+        library = element_library.element_types()
+        for type_id, row in rows.items():
+            if not isinstance(row, Mapping) or row.get("option2", 1) != 2:
+                continue
+            index = self.registry_index(row.get("element_type"), self.element_type_names)
+            if index is None:
+                continue
+            type_name = self.element_type_names[index]
+            if library.get(type_name, {}).get("second_order", True) is False:
+                self.problems.append(f"element_types.{type_id}: {type_name} is first order only (second_order false in"
+                                     " the element library): option2 must be 1.")
+
         self.mesh_ids("element_types", rows, self.type_ids, missing_is_error=True)
         self.cell_dimensions(resolved)
         return rows
@@ -611,14 +626,15 @@ class _ModelChecker:
                     self.problems.append(f"{label}: the law '{name}' is given twice for this id.")
                 seen.add(name)
                 curve = self.laws[name].get("curve")
-                expected = {"type", *(curve or ())}
+                curves = ([tuple(curve)] if curve else []) + [tuple(c) for c in self.laws[name].get("curves", [])]
+                expected = {"type", *(a for c in curves for a in c)}
                 unknown = sorted(set(entry) - expected)
                 if unknown:
                     self.problems.append(
                         f"{label}: unknown keys {unknown} for the law '{name}'; expected {sorted(expected)}."
                     )
-                if curve:
-                    self.curve(entry, curve[0], curve[1], label)
+                for x_key, y_key in curves:
+                    self.curve(entry, x_key, y_key, label)
                 source = self.laws[name]["source"]
                 if cell_ids[source].size and row_id not in set(np.unique(cell_ids[source]).tolist()):
                     LOGGER.warning("%s: no cell has the %s id %d.", label, source.rstrip("s").replace("_", " "), row_id)

@@ -1,11 +1,11 @@
 .. _theory-3d:
 
-3D formulations: ``AV3D_nodal`` and ``AV3D_edge``
--------------------------------------------------
+3D formulations: ``AVA3D_nodal`` and ``AVA3D_edge``
+---------------------------------------------------
 
-The 3D element types solve the A-V formulation of :doc:`maxwell` on volume meshes, with two discretizations of the
-vector potential: Lagrange (nodal) components in ``AV3D_nodal`` (:ref:`el-av3d-nodal`) and Nedelec edge elements in
-``AV3D_edge`` (:ref:`el-av3d-edge`). The scalar potential and the coil unknowns are Lagrange fields in both.
+The 3D element types solve the A, V-A formulation of :doc:`maxwell` on volume meshes, with two discretizations of the
+vector potential: Lagrange (nodal) components in ``AVA3D_nodal`` (:ref:`el-av3d-nodal`) and Nedelec edge elements in
+``AVA3D_edge`` (:ref:`el-av3d-edge`). The scalar potential and the coil unknowns are Lagrange fields in both.
 
 Unknowns and currents
 ~~~~~~~~~~~~~~~~~~~~~
@@ -57,7 +57,7 @@ weak form of :math:`\nabla\cdot\mathbf{J}=0` in the conductors with the currents
 Discretization
 ~~~~~~~~~~~~~~
 
-**Nodal** (``AV3D_nodal``). Each component of :math:`\mathbf{A}` is a Lagrange field of order ``option2``:
+**Nodal** (``AVA3D_nodal``). Each component of :math:`\mathbf{A}` is a Lagrange field of order ``option2``:
 :math:`\mathbf{A}_h=\sum_jN_j\,\mathbf{a}_j`, three DOFs per node. The components are continuous everywhere, including
 the normal component at material interfaces, where the exact :math:`\mathbf{A}` may jump; the gauge term
 :math:`g(\mathbf{w},\mathbf{A})=\int\nu_g\,(\nabla\cdot\mathbf{w})(\nabla\cdot\mathbf{A})`, with the scalar reluctivity
@@ -65,7 +65,7 @@ the normal component at material interfaces, where the exact :math:`\mathbf{A}` 
 [BiroPreis1989]_. Nodal elements accept any first- or second-order mesh, and their Dirichlet values and couplings are
 vectors in the nodal frames (``node_angles``).
 
-**Edge** (``AV3D_edge``). :math:`\mathbf{A}_h=\sum_kW_k\,a_k` with the first-order Nedelec shape functions of the first
+**Edge** (``AVA3D_edge``). :math:`\mathbf{A}_h=\sum_kW_k\,a_k` with the first-order Nedelec shape functions of the first
 kind (``NEDELEC_ONE``) [Nedelec1980]_: one DOF per edge, the circulation
 :math:`a_k=\int_{\text{edge }k}\mathbf{A}\cdot d\mathbf{l}`.
 Only the tangential component is continuous across faces, which is what the physics requires at material interfaces

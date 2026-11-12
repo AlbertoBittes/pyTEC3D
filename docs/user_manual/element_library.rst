@@ -31,64 +31,58 @@ Overview
      - DOF fields (finite elements)
      - Use
    * - 0
-     - ``AV2D_nodal``
+     - ``AVA2D_nodal``
      - 2
      - A_z (Lagrange); V, VOLT, EMF (Lagrange, out of plane)
-     - 2D planar or axisymmetric eddy currents, conductors with a terminal, stranded coils.
+     - 2D planar or axisymmetric eddy currents (A, V-A), conductors with a terminal, stranded coils.
    * - 1
-     - ``AV3D_nodal``
+     - ``AVA3D_nodal``
      - 3
      - A (Lagrange vector); V, VOLT, EMF (Lagrange)
-     - 3D eddy currents, nodal vector potential with a Coulomb gauge (penalty) term.
+     - 3D eddy currents (A, V-A), nodal vector potential with a Coulomb gauge (penalty) term.
    * - 2
-     - ``AV3D_edge``
+     - ``AVA3D_edge``
      - 3
      - A (Nedelec, first kind); V, VOLT, EMF (Lagrange)
-     - 3D eddy currents with edge elements: tangential continuity only, tree-cotree gauge.
+     - 3D eddy currents (A, V-A) with edge elements: tangential continuity only, tree-cotree gauge.
    * - 3
-     - ``AV2D_nodal_timint``
+     - ``AVA2D_nodal_timint``
      - 2
      - as 0, V, VOLT and EMF time-integrated
      - Symmetric coupling in 2D.
    * - 4
-     - ``AV3D_nodal_timint``
+     - ``AVA3D_nodal_timint``
      - 3
      - as 1, V, VOLT and EMF time-integrated
      - Symmetric coupling, nodal.
    * - 5
-     - ``AV3D_edge_timint``
+     - ``AVA3D_edge_timint``
      - 3
      - as 2, V, VOLT and EMF time-integrated
      - Symmetric coupling, edge.
    * - 6
+     - ``TPHI3D_edge``
+     - 3
+     - PHI (Lagrange), T (Nedelec)
+     - 3D eddy currents (and magnetostatics) in conductors and superconductors, T-phi formulation (also T-Omega,
+       H-phi): the scalar potential everywhere, the current vector potential T in the conductors only. No source
+       current: a coil is T fixed on its edges.
+   * - 7
      - ``PHI3D_nodal``
      - 3
-     - PHI (Lagrange)
-     - Magnetostatics with the total or reduced magnetic scalar potential.
-   * - 7
-     - ``PHI2D_nodal``
-     - 2
-     - PHI (Lagrange, in plane)
-     - As 6 in 2D, planar or axisymmetric (fields in the plane).
+     - PHI (Lagrange), Hs (Nedelec)
+     - 3D magnetostatics with the scalar potential: H = Hs - grad(PHI), the source field Hs of the currents
+       (curl Hs = Js) solved in the same system.
    * - 8
-     - ``A3D_edge``
-     - 3
-     - A (Nedelec); VOLT, EMF (Lagrange)
-     - 3D eddy currents with A alone in the conductors (A*, no V); source currents as Js or T0.
-   * - 9
-     - ``TA3D_edge``
-     - 3
-     - A, T (Nedelec); VOLT, EMF (Lagrange)
-     - 3D eddy currents with the current vector potential T in the conductors (T-A).
-   * - 10
-     - ``HPHI3D_edge``
-     - 3
-     - PHI (Lagrange, first order), Hc (Nedelec)
-     - 3D eddy currents with H in the conductors and the scalar potential outside (H-phi).
+     - ``TPHI2D_edge``
+     - 2
+     - PHI (Lagrange), T (Nedelec, in-plane)
+     - 2D T-phi (the 2D H-formulation of superconductor cross-sections): H in the plane, J and E out of plane;
+       planar or axisymmetric.
 
-The A-V types and 8-10 are first order in time (``time_order = 1``: the theta method, see
-:ref:`theory-time-integration`); 6 and 7 are static (``time_order = 0``). A model uses one element type for all its
-cells, with any of its domains. Theory of 6-10: :doc:`../theory/formulations_potentials`.
+The A, V-A types, 6 and 8 are first order in time (``time_order = 1``: the theta method, see
+:ref:`theory-time-integration`); 7 is static (``time_order = 0``). A model uses one element type for all its cells, with
+any of its domains. 2D magnetostatics uses ``AVA2D_nodal``. Theory of 6 and 7: :doc:`../theory/formulations_potentials`.
 
 .. _el-domains:
 
@@ -110,11 +104,12 @@ Domains
      - A. Material: ``mur`` (or the B-H curve).
    * - ``HARD_MAGNETIC`` (2)
      - Permanent magnet: :math:`\mathbf{H}=\nu\mathbf{B}-\mathbf{M}`, the magnetization adds the source
-       :math:`\int\nabla\times\mathbf{w}\cdot\mathbf{M}`.
+       :math:`\int\nabla\times\mathbf{w}\cdot\mathbf{M}` (T-phi: :math:`\int\nabla q\cdot\mathbf{B}_r`,
+       :math:`\mathbf{B}_r=\mu_0\mu_r\mathbf{M}`). With a B-H curve see :doc:`../theory/constitutive`.
      - A. Material: ``mur``, ``M``.
    * - ``STRANDED_CONDUCTOR`` (3)
      - Imposed current density, no eddy currents: :math:`\mathbf{J}=\mathbf{J}_s`.
-     - A. Material: ``mur`` (``M``). Element load ``Js``.
+     - A. Material: ``mur`` (``M``). Element load ``Js``. ``PHI3D_nodal``: the source of Hs.
    * - ``CIRCUIT_COUPLED_CONDUCTOR`` (4)
      - **2D only.** Massive conductor with eddy currents and a **terminal**: the voltage V across its out-of-plane
        length, one value per conductor (coupled). Driven by its total current (``AMPS``) or by its voltage (``_V``).
@@ -128,7 +123,12 @@ Domains
      - Multi-turn winding with uniform current density :math:`\mathbf{J}=(N/S)\,i\,\mathbf{T}` and circuit equation
        :math:`\mathrm{VOLT}=R\,i+\mathrm{EMF}`, :math:`\mathrm{EMF}=d\Psi/dt`. No eddy currents.
      - A + VOLT + EMF (coupled per coil). Material: ``mur`` (``M``). Real constants ``cross_section``, ``turns``,
-       ``resistance``, ``symmetry``, ``T``, and ``radius`` (2D) or ``volume`` (3D). Nodal load ``CURR``.
+       ``resistance``, ``symmetry``, ``T``, and ``radius`` (2D) or ``volume`` (3D). Nodal load ``CURR``. Not in the
+       scalar potential types (T-phi: a coil is T fixed on its edges, :ref:`el-tphi3d`).
+   * - ``CUT_LAYER`` (7)
+     - ``TPHI3D_edge``: cells with T but no conduction: a layer of one cell spanning the hole of a ring (its net
+       current), or the hole of a coil given as T fixed on its edges (:ref:`el-tphi3d`).
+     - PHI + T (collapsed in a cut, fixed in a coil). Material: ``mur``.
 
 * The **magnetization** ``M`` is read in every domain except ``NON_CONDUCTING`` and ``SOFT_MAGNETIC`` (default 0): a
   magnetized region can also carry currents.
@@ -147,8 +147,8 @@ derivative of the unknown) or **F** (right-hand side).
 
 .. _el-av2d:
 
-``AV2D_nodal`` (index 0)
-------------------------
+``AVA2D_nodal`` (index 0)
+-------------------------
 
 2D formulation, planar (``option3 = 0``) or axisymmetric about the y axis (``option3 = 1``). The vector potential has
 only its out-of-plane component, :math:`\mathbf{A}=A_z\mathbf{e}_z` (planar) or :math:`A_\theta\mathbf{e}_\theta`
@@ -295,8 +295,8 @@ Boundary conditions and setup
 
 .. _el-av3d-nodal:
 
-``AV3D_nodal`` (index 1)
-------------------------
+``AVA3D_nodal`` (index 1)
+-------------------------
 
 3D formulation with a nodal (Lagrange) vector potential, three components per node, and a Coulomb-gauge penalty term
 that makes the curl-curl operator definite. Theory: :ref:`theory-3d` and :ref:`theory-gauge`.
@@ -328,7 +328,7 @@ Fields
         - Induced voltage.
 
 Parameters
-   As ``AV2D_nodal``, with these differences: no ``thickness``; ``mn.AMPS`` is the nodal load of V in the solid
+   As ``AVA2D_nodal``, with these differences: no ``thickness``; ``mn.AMPS`` is the nodal load of V in the solid
    conductors (current injected at the node [A]); the coil volume is the real constant ``rc.volume`` (volume of the
    whole coil) instead of ``radius``. ``Js``, ``M`` and ``T`` are 3-vectors.
 
@@ -361,7 +361,7 @@ Weak form
         - :math:`\int\mathbf{w}\cdot\sigma\nabla V`, :math:`\int\nabla q\cdot\sigma\nabla V`
       * - STRANDED_COIL
         - K, C
-        - as in ``AV2D_nodal``, with 3D vectors.
+        - as in ``AVA2D_nodal``, with 3D vectors.
 
    The V row is the charge conservation :math:`\nabla\cdot\mathbf{J}=0` in weak form; ``AMPS`` on a node is a
    current source at that node (:ref:`theory-circuit-conductor`).
@@ -386,25 +386,31 @@ Boundary conditions and setup
 
 .. _el-av3d-edge:
 
-``AV3D_edge`` (index 2)
------------------------
+``AVA3D_edge`` (index 2)
+------------------------
 
-``AV3D_nodal`` with the vector potential discretized by first-order Nedelec (edge) elements of the first kind
+``AVA3D_nodal`` with the vector potential discretized by first-order Nedelec (edge) elements of the first kind
 [Nedelec1980]_, ``NEDELEC_ONE``: one DOF per edge, the circulation of A along it; A is tangentially continuous only,
 which represents
 fields at material interfaces correctly. Theory: :ref:`theory-3d`.
 
-Differences from ``AV3D_nodal``
+Differences from ``AVA3D_nodal``
    * The mesh must be **quadratic** (TET10, HEX20/27, PRISM15/18, PYRAMID13): the edge DOFs are stored on the midside
-     nodes. ``option2`` is the order of the Lagrange fields V, VOLT and EMF.
+     nodes. ``option2`` is the order of the Lagrange fields V, VOLT and EMF (2 as MAPDL SOLID236, whose V is on all 20
+     nodes); A is first-order Nedelec whatever ``option2`` (there is no second-order Nedelec element): refine the mesh
+     near the conductor surfaces.
    * No Coulomb gauge term: the curl-curl matrix is singular in the non-conducting regions (gradient fields). Gauge
      it with a tree-cotree decomposition, :func:`pytec3d.tree_gauge.tree_gauge` (:ref:`theory-gauge`).
+   * Nodal load of A: ``CSG`` (:doc:`loads`), on the midside points: the load of the edge DOFs (``AMPS`` and
+     ``CURR`` as for the nodal type).
    * Dirichlet values of A: component 2 of ``_A`` on the midside nodes, the tangential circulation along the edge
      (``_A = 0`` on the midside nodes of a face fixes :math:`\mathbf{n}\times\mathbf{A}=0` there). No nodal frame
      rotation is needed (the values are scalars). A non-zero value is :math:`\int\mathbf{A}\cdot d\mathbf{l}` from the
      lexicographically smaller end point of the edge to the larger one (compare x, then y, then z: libMesh's edge
      orientation), e.g. a uniform field :math:`\mathbf{B}_0` through :math:`\mathbf{A}=\tfrac12\mathbf{B}_0\times
-     \mathbf{x}` (the ``formulations`` benchmarks do this; the same holds for every Nedelec field).
+     \mathbf{x}` (the same holds for every Nedelec field). :func:`pytec3d.tree_gauge.edges` lists the edges of
+     the mesh (or of some cells) with their midside point and their end points in this orientation, and
+     :func:`pytec3d.tree_gauge.edge_circulations` integrates a known field along them.
    * Cyclic couplings pair the midside nodes as well; the edge orientation is matched automatically.
 
 Examples: ``examples/coil_3D_avoltemf_edge*``,
@@ -415,7 +421,7 @@ Examples: ``examples/coil_3D_avoltemf_edge*``,
 Time-integrated variants (``_timint``, indices 3, 4, 5)
 -------------------------------------------------------
 
-``AV2D_nodal_timint``, ``AV3D_nodal_timint`` and ``AV3D_edge_timint`` inherit everything from their base type, except
+``AVA2D_nodal_timint``, ``AVA3D_nodal_timint`` and ``AVA3D_edge_timint`` inherit everything from their base type, except
 that **every electric unknown is a time integral**:
 
 .. list-table::
@@ -447,17 +453,22 @@ All the coupling terms then multiply a time derivative and move to **C**, which 
 Examples: ``examples/coil_2D_avolt_timint``, ``examples/coil_3D_avoltemf_timint``,
 ``examples/ITER_3D_evol_fine2``.
 
-.. _el-phi:
+.. _el-tphi3d:
 
-``PHI3D_nodal``, ``PHI2D_nodal`` (indices 6, 7)
------------------------------------------------
+``TPHI3D_edge`` (index 6): T-phi formulation
+--------------------------------------------
 
-Magnetostatics with the magnetic scalar potential: :math:`\mathbf{H}=\mathbf{H}_s-\nabla\phi`, with the source field
-:math:`\mathbf{H}_s` (``Hs``, cell array, default 0: the total potential; given, e.g. the Biot-Savart field of the
-coils: the reduced potential). Static (``time_order`` 0), linear. Domains: NON_CONDUCTING, SOFT_MAGNETIC,
-HARD_MAGNETIC (``M``), STRANDED_CONDUCTOR (a region where ``Hs`` is given, no other effect). ``PHI2D_nodal`` is planar
-or axisymmetric about y (``option3``), with the out-of-plane length ``thickness`` of ``AV2D_nodal``. Theory:
-:ref:`theory-potentials`.
+The magnetic field :math:`\mathbf{H}=\mathbf{T}-\nabla\phi`, with :math:`\phi` (``PHI``) a Lagrange field on the whole
+mesh and :math:`\mathbf{T}` (``T``) a Nedelec field of the conductors and the cut layers only, so that the unknowns are
+few where the field diffuses (conductors, superconductors) and one per node elsewhere. The classic T-Omega form of the
+literature (also called H-phi) [Carpenter1977]_, [Biro1999]_, [Kuczmann2009]_: Faraday's law in the conductors,
+:math:`\nabla\cdot\mathbf{B}=0` everywhere at every step, so a static step solves magnetostatics (with
+:math:`\mathbf{T}=0`) and a transient step eddy currents. There is **no source current**: the field is driven by the
+boundary values of :math:`\phi` (an applied field), by magnets (a constant ``M``), by the current or the voltage of a
+conductor through its cut, or by a coil given as **T fixed on its edges** (Setup). Domains: NON_CONDUCTING,
+SOFT_MAGNETIC, HARD_MAGNETIC (``M``), SOLID_CONDUCTOR, CUT_LAYER (T without conduction). Nonlinear laws:
+``power_law`` (:math:`\rho(J)`), ``bh_curve_h`` (:math:`\mu(H)`; in a conductor the rate of B by the time scheme).
+Theory: :ref:`theory-potentials`.
 
 Weak form
    .. list-table::
@@ -467,155 +478,261 @@ Weak form
       * - Domain
         - Matrix
         - Term
+      * - SOLID_CONDUCTOR
+        - K
+        - :math:`\int\nabla\times\mathbf{t}\cdot\rho\nabla\times\mathbf{T}`
+      * - SOLID_CONDUCTOR, CUT_LAYER
+        - C
+        - :math:`\int\mathbf{t}\cdot\mu\partial_t(\mathbf{T}-\nabla\phi)`
       * - all
         - K
-        - :math:`\int\nabla q\cdot\mu\nabla\phi`, :math:`\mu=\mu_0\,\mathrm{mur}`
-      * - all
-        - F
-        - :math:`\int\nabla q\cdot\mu\mathbf{H}_s`
+        - :math:`\int\nabla q\cdot\mu(\nabla\phi-\mathbf{T})`, :math:`\mu=\mu_0\,\mathrm{mur}`
       * - HARD_MAGNETIC
         - F
-        - :math:`\int\nabla q\cdot\mu\mathbf{M}`
+        - :math:`\int\nabla q\cdot\mathbf{B}_r`, :math:`\mathbf{B}_r=\mu_0\mu_r\mathbf{M}` (not the law's :math:`\mu`)
+
+   The matrix is not symmetric (the coupling of T and :math:`\phi` is in C one way, in K the other).
 
 Outputs
-   ``H`` :math:`=\mathbf{H}_s-\nabla\phi` and ``B`` :math:`=\mu(\mathbf{H}+\mathbf{M})`, nodes and elements.
-
-Boundary conditions and setup
-   * ``_PHI`` fixes the tangential field: :math:`\phi=-\mathbf{H}_0\cdot\mathbf{x}` on the outer boundary applies the
-     uniform field :math:`\mathbf{H}_0`; a constant :math:`\phi` is a flux-normal plane (or an ideal iron pole). A free
-     boundary is a flux wall (:math:`\mathbf{n}\cdot\mathbf{B}=0`). Fix :math:`\phi` on at least one node.
-   * The total potential is multivalued around a current that threads the domain: use the reduced potential there.
-     The reduced potential loses accuracy in iron (cancellation); the B-H law does not apply (it replaces
-     :math:`\nu`, the scalar potential uses :math:`\mu`).
-   * Benchmarks: ``phi3d_sphere``, ``phi3d_magnet``, ``phi2d_cylinder``, ``phi2d_axisym`` of the ``formulations``
-     suite.
-
-.. _el-a3d:
-
-``A3D_edge`` (index 8)
-----------------------
-
-``AV3D_edge`` without the electric potential: in the conductors :math:`\mathbf{E}=-\partial_t\mathbf{A}` (the A*
-formulation), :math:`\mathbf{J}=-\sigma\partial_t\mathbf{A}`; the stranded coils keep VOLT and EMF. Domains: those
-of ``AV3D_edge``; no ``AMPS``, no ``V``. Theory: :ref:`theory-potentials`.
-
-Weak form
-   ``AV3D_edge`` without the V terms, plus the source term of the current vector potential ``T0`` (every domain):
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 10 60
-
-      * - Domain
-        - Matrix
-        - Term
-      * - all
-        - K
-        - :math:`\int\nabla\times\mathbf{w}\cdot\nu\nabla\times\mathbf{A}`
-      * - SOLID_CONDUCTOR
-        - C
-        - :math:`\int\mathbf{w}\cdot\sigma\partial_t\mathbf{A}`
-      * - all
-        - F
-        - :math:`\int\nabla\times\mathbf{w}\cdot\mathbf{T}_0` (``T0``, cell array, default 0)
-      * - STRANDED_CONDUCTOR; magnetized domains; STRANDED_COIL
-        - F; F; K, C
-        - as ``AV3D_edge``
-
-Gauge and setup
-   * Tree-cotree gauge of the **non-conducting** edges only, rooted on the Dirichlet boundary **and on the conductor
-     surfaces**: ``tree_gauge(mesh, non_conducting_point_ids=<points of the non-conducting cells>,
-     start_surface_point_ids=<boundary points> + <conductor surface points>)``. A tree through a conductor
-     over-constrains it.
-   * ``T0`` is the source current as a current vector potential, :math:`\nabla\times\mathbf{T}_0=\mathbf{J}_s`: unlike
-     ``Js`` it needs not be divergence free on the mesh to be compatible with the gauge (the term vanishes for every
-     gradient). Any :math:`\mathbf{T}_0` with that curl will do, piecewise constant, e.g. the Biot-Savart field
-     :math:`\mathbf{H}_s` of the coil. Give a source as ``Js`` or ``T0``, not both. Where the natural condition holds,
-     :math:`\mathbf{T}_0` should vanish or be normal to the boundary.
-   * Benchmarks: ``eddy_sphere`` and ``t0_sphere`` of the ``formulations`` suite.
-
-.. _el-ta3d:
-
-``TA3D_edge`` (index 9)
------------------------
-
-``A3D_edge`` with the current of the solid conductors given by a current vector potential T (Nedelec, SOLID_CONDUCTOR):
-:math:`\mathbf{J}=\nabla\times\mathbf{T}`, Faraday's law in the conductors with :math:`\mathbf{E}=\rho\mathbf{J}`.
-Parameters, coils and sources (``Js``, ``T0``, ``M``) as ``A3D_edge``. Theory: :ref:`theory-potentials`.
-
-Weak form
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 10 60
-
-      * - Domain
-        - Matrix
-        - Term
-      * - all
-        - K
-        - :math:`\int\nabla\times\mathbf{w}\cdot\nu\nabla\times\mathbf{A}`
-      * - SOLID_CONDUCTOR
-        - K
-        - A row: :math:`-\int\mathbf{w}\cdot\nabla\times\mathbf{T}`; T row:
-          :math:`\int\nabla\times\mathbf{t}\cdot\rho\nabla\times\mathbf{T}`
-      * - SOLID_CONDUCTOR
-        - C
-        - T row: :math:`\int\nabla\times\mathbf{t}\cdot\partial_t\mathbf{A}`
-
-Outputs
-   ``Jt`` in the solid conductors: :math:`\nabla\times\mathbf{T}`; otherwise as ``A3D_edge``.
-
-Gauge and setup
-   * ``_T`` = 0 (component 2) on the midside nodes of the conductor surfaces: :math:`\mathbf{n}\times\mathbf{T}=0`, no
-     current leaves a conductor.
-   * A: tree over **all** the edges (conductors included), rooted on the Dirichlet boundary. T: tree of the conductor
-     edges rooted on its surface: ``tree_gauge(mesh, <conductor points>, <conductor surface points>,
-     array_name="_T", tree_name="TREE_T", cotree_name="COTREE_T")``.
-   * Induced currents in simply connected conductors: with :math:`\mathbf{n}\times\mathbf{T}=0` on the whole surface the
-     net current through any section is zero (no transport current, no ring current).
-   * Benchmarks: ``eddy_sphere``, ``t0_sphere``.
-
-.. _el-hphi3d:
-
-``HPHI3D_edge`` (index 10)
---------------------------
-
-The H-phi formulation: :math:`\mathbf{H}=\mathbf{H}_c-\nabla\phi`, with :math:`\phi` (``PHI``) a **first-order** Lagrange
-field on the whole mesh (whatever ``option2``) and :math:`\mathbf{H}_c` (``Hc``) a Nedelec field of the conductors.
-Domains: NON_CONDUCTING, SOFT_MAGNETIC (linear), SOLID_CONDUCTOR. Transient only. Theory: :ref:`theory-potentials`.
-
-Weak form (symmetric)
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 10 60
-
-      * - Domain
-        - Matrix
-        - Term
-      * - SOLID_CONDUCTOR
-        - K
-        - :math:`\int\nabla\times\mathbf{h}_c\cdot\rho\nabla\times\mathbf{H}_c`
-      * - SOLID_CONDUCTOR
-        - C
-        - :math:`\int\mathbf{h}_c\cdot\mu\partial_t\mathbf{H}_c`, :math:`-\int\mathbf{h}_c\cdot\mu\nabla\partial_t\phi`,
-          :math:`-\int\nabla q\cdot\mu\partial_t\mathbf{H}_c`
-      * - all
-        - C
-        - :math:`\int\nabla q\cdot\mu\nabla\partial_t\phi`
-
-Outputs
-   ``H`` :math:`=\mathbf{H}_c-\nabla\phi`, ``B`` :math:`=\mu\mathbf{H}` (nodes and elements); ``Jt``
-   :math:`=\nabla\times\mathbf{H}_c` (elements).
+   ``H`` :math:`=\mathbf{T}-\nabla\phi`, ``B`` :math:`=\mu\mathbf{H}` (+ :math:`\mathbf{B}_r`) (nodes and elements);
+   ``Jt`` :math:`=\nabla\times\mathbf{T}` (elements, SOLID_CONDUCTOR: the eddy currents, and the current of a fixed-T
+   coil in its winding); ``E`` :math:`=\rho\nabla\times\mathbf{T}` (elements, SOLID_CONDUCTOR; with a power law
+   :math:`E(J)`): the loss density :math:`\mathbf{E}\cdot\mathbf{J}` and the critical state (:math:`|E|/E_c`).
 
 Setup
-   * ``_Hc`` = 0 (component 2) on the midside nodes of the conductor surfaces, and ``_PHI`` = 0 on the conductor nodes
+   * ``_T`` = 0 (component 2) on the midside nodes of the conductor surfaces, and ``_PHI`` = 0 on the conductor nodes
      that are not on a surface: :math:`\phi` only extends the outer potential into the conductors.
-   * The source is the applied field through ``_PHI`` on the outer boundary (:math:`\phi=-\mathbf{H}_0(t)\cdot
-     \mathbf{x}`); a free boundary is a flux wall. No ``Hs``, no magnets, no stranded coils.
-   * Every step must be transient (a static step pins :math:`\phi` to zero, :math:`\mathbf{H}_c` is then singular);
-     start from the zero field.
-   * A conductor with a net current (or a ring) makes :math:`\phi` multivalued: not supported (needs cuts).
-   * Benchmark: ``eddy_sphere``.
+   * Or a tree gauge of T: ``_PHI`` free everywhere, ``_T`` = 0 on the surface and on the tree of the conductor edges
+     rooted on the surface points, ``tree_gauge.tree_gauge(grid, conductor_points, surface_points, array_name="_T")``.
+     The same solution and the same number of unknowns (each removes one unknown per inner node, a :math:`\phi` or a
+     tree edge of T). Benchmark: ``eddy_sphere`` (``TPHI3D_edge_tree``).
+   * First order only (``"second_order": false`` in the library, option2 = 2 refused before the solve): T is a
+     first-order Nedelec field, and the gradients of first-order Lagrange functions lie in its edge space (the Whitney
+     pair). The accuracy is first order.
+   * ``_PHI`` fixes the tangential field: :math:`\phi=-\mathbf{H}_0(t)\cdot\mathbf{x}` on the outer boundary applies the
+     uniform field :math:`\mathbf{H}_0`; a constant :math:`\phi` is a flux-normal plane. A free boundary is a flux wall
+     (:math:`\mathbf{n}\cdot\mathbf{B}=0`). Fix :math:`\phi` on at least one node.
+   * Static steps (the model's job, the solver does not do it): at rest :math:`\mathbf{H}=-\nabla\phi` in the
+     conductors too, so set ``_T`` = 0 on every conductor edge (:math:`\rho\nabla\times\nabla\times` alone leaves the
+     gradient part of T free, a singular system) and free ``_PHI`` (NaN) at the inner conductor nodes. A permanent
+     magnet is a constant ``M``: it acts at every step, static or transient, so a transient may start from the
+     magnetostatic state of a static step: before the transient steps put the transient gauges back (``_T`` NaN but 0
+     on the surface, ``_PHI`` = 0 at the inner nodes). Benchmark: ``eddy_sphere_static``. In a static step a T DOF
+     without stiffness (a CUT_LAYER edge) keeps a value given by ``_T`` (a fixed coil), else it is set to zero.
+     A static step has no currents in the conductors: after a transient it wipes the induced currents, so trapped
+     fields, persistent currents and their relaxation need transient steps only (a long hold: a transient with a
+     long time step).
+   * **No cancellation error** in high-permeability iron: there is no source field to cancel.
+   * A conductor with a **net current** (a ring with an induced current, a wire or a tape with a transport current, a
+     winding modelled as a conductor) needs a **cut**: :ref:`el-cuts`.
+   * Without a cut: fill the hole with a weak conductor (SOLID_CONDUCTOR, resistivity :math:`10^4`-:math:`10^6` times
+     the ring's) [Kuczmann2009]_: the conductor is then simply connected and T carries the net current across the hole.
+     In ``ring`` a :math:`10^6` fill gives the current of the cut to :math:`10^{-5}` (:math:`10^2`: 3 %; :math:`10^8`:
+     round-off). Simpler to mesh than a cut; the hole cells add T unknowns and cannot carry an imposed transport
+     current or voltage.
+   * Transport current or voltage through the cut, several conductors, conductors in series or in parallel:
+     :ref:`el-cuts`.
+   * **A coil as T fixed on its edges** (a stranded coil with current drive: uniform current, no eddy current in the
+     winding, no circuit). Take any field :math:`\mathbf{T}_0` with :math:`\nabla\times\mathbf{T}_0=\mathbf{J}` (the
+     current density of the winding at unit current) that is **zero outside the winding and the hole it encloses**,
+     and impose its circulations: ``_T`` = :math:`I(t)\int_e\mathbf{T}_0\cdot d\mathbf{l}` on every edge of those cells
+     (component 2 of the midside points, in libMesh's orientation: :func:`pytec3d.tree_gauge.edges` and
+     :func:`pytec3d.tree_gauge.edge_circulations`), at each step. The winding cells are
+     SOLID_CONDUCTOR (their ``rho`` is not used: T is fixed; ``Jt`` shows the coil current), the hole cells CUT_LAYER
+     (T without conduction, with their ``mur``: air or iron). :math:`\phi` does the rest. Several coils add their
+     :math:`\mathbf{T}_0`, each with its own current, also where they overlap. There is no voltage drive: the induced
+     voltage is computed afterwards, from the flux :math:`\Psi=\int\mathbf{T}_0\cdot\mathbf{B}` per ampere.
+
+     *The hole.* A winding with turns around an axis needs :math:`\mathbf{T}_0\ne0` across the area each turn
+     encloses: its circulation around the winding's cross-section is the current. For an axisymmetric winding of
+     rectangular cross-section :math:`r_1<r<r_2`, :math:`z_1<z<z_2` with the current density :math:`J`
+     (:math:`J=NI/((r_2-r_1)(z_2-z_1))`):
+
+     .. math::
+
+        \mathbf{T}_0=T_z\,\mathbf{e}_z,\qquad
+        T_z=\begin{cases}J\,(r_2-r) & r_1<r<r_2\ \text{(the winding)}\\
+        J\,(r_2-r_1) & r<r_1\ \text{(the hole)}\\ 0 & \text{elsewhere}\end{cases}
+        \qquad z_1<z<z_2,
+
+     zero for :math:`z` outside :math:`(z_1,z_2)`. "The hole" is the cylinder :math:`r<r_1`, :math:`z_1<z<z_2`: the
+     part of the region the winding encloses over the height of the winding, a disk as thick as the coil (for a thin
+     turn, a thin disk). There :math:`\mathbf{T}_0` is uniform, curl-free: no current. :math:`\mathbf{n}\times
+     \mathbf{T}_0=0` on the whole boundary of winding + hole (:math:`T_z\to0` at :math:`r_2`, and
+     :math:`\mathbf{T}_0` is normal to the planes :math:`z_1`, :math:`z_2`), so H stays tangentially continuous. A
+     square winding uses :math:`\max(|x|,|y|)` in place of :math:`r` (exact on a Cartesian grid).
+
+     *A conductor in the hole* (a core, a vessel) has its own T, which cannot be fixed. Move :math:`\mathbf{T}_0` out
+     of it by a gradient: :math:`\mathbf{T}_0'=\mathbf{T}_0-\nabla g` with :math:`g=T_h\,z\,\chi`, :math:`T_h` the
+     uniform value in the hole and :math:`\chi` = 1 on the nodes of the conductor's cells, 0 elsewhere. On the edges
+     :math:`\nabla g` is exact (:math:`g(\text{end})-g(\text{start})`), so the edge values of :math:`\mathbf{T}_0'` are
+     zero on every edge of the conductor (its surface included: ``_T`` = 0 there as the gauge wants) and carry the
+     same current; the support becomes the winding and the rest of the hole. The conductor keeps its usual gauge.
+
+     Benchmarks: ``coil_core`` (a square solenoid around a conducting core block, ``pytec3d_driver.solenoid_t0``:
+     against A, V-A within 3 % (B) and 6 % (core current)), ``closed_core`` (``TPHI3D_edge_coil``: a coil on an iron
+     leg, the leg its hole, CUT_LAYER iron cells: the same solution as ``PHI3D_nodal`` with Hs given on the edges,
+     to 10⁻¹⁴, linear and with a B-H curve).
+
+     The alternative, the winding as a SOLID_CONDUCTOR of high resistivity driven through a cut, suppresses its eddy
+     currents (:math:`\mu\sigma d^2\ll\Delta t`; not beyond, the conditioning degrades) but gives the current the
+     distribution of conduction (about :math:`1/r` across a round winding, crowding at corners), not the uniform one.
+   * Benchmarks of the ``formulations`` suite: ``phi3d_sphere``, ``phi3d_magnet``, ``phi_bh_sphere``, ``magnet_bh``
+     (static, no conductor); ``eddy_sphere``, ``eddy_sphere_static``, ``ring``, ``ring_transport``, ``powerlaw_slab``,
+     ``powerlaw_hts``, ``coil_core``, ``closed_core``.
+   * Examples: ``examples/ring_3D_tphi`` (a cut, induced current), ``examples/coil_core_3D_tphi`` (a fixed-T coil
+     around a conducting core); tutorial :doc:`../tutorials/tutorial_tphi_cuts` (the three drives of a cut).
+
+.. _el-cuts:
+
+Cuts: conductors with a net current (T-phi)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+*Why.* :math:`\phi` is one single-valued nodal field, so outside the conductors, where :math:`\mathbf{H}=-\nabla\phi`,
+the circulation of H around any closed loop is zero. A loop around a conductor carrying a net current I must give I
+(Ampère): the region outside the conductors must be made **simply connected** by **cuts**, surfaces :math:`\Sigma` on
+which T carries the jump, :math:`\mathbf{T}=I\nabla c` with c going from 0 to 1 across a layer of cells. Every loop
+around the conductor then crosses the cut once and picks up I from T. One cut per independent loop (per hole of the
+non-conducting region): a ring needs one disk spanning its hole; a wire or a tape carrying a transport current needs
+a cut from its surface to the outer boundary (or, in 3D, between its terminals on the boundary); a 2D cross-section of
+a conductor carrying :math:`I_z`, a strip from the conductor to the boundary.
+
+*Step by step* (the same in 3D, ``TPHI3D_edge``, and in 2D, ``TPHI2D_edge``):
+
+1. **Choose** :math:`\Sigma`: a set of mesh faces (3D) or mesh edges (2D) in the non-conducting region, from the
+   conductor surface to the outer boundary or across the hole, not crossing other conductors or other cuts.
+2. **The layer**: the cells with a face (an edge in 2D) on :math:`\Sigma`, on one side of it, one cell thick, conforming.
+   Give them a TYPE row with ``option1`` = ``CUT_LAYER`` (T without conduction) and their real material (``mur``: air
+   or iron).
+3. **Classify the edges of the layer**. *Planar* edges lie on :math:`\Sigma` (the side c = 0) or on the opposite face
+   of the layer (c = 1); *crossing* edges have one end on each side. ``_T`` = 0 (component 2 of their midside nodes) on
+   the planar edges. The crossing edges carry the current: the circulation of :math:`I\nabla c` along each one is
+   :math:`\pm I`, + when its libMesh orientation (from the lexicographically smaller end point, x then y then z, to
+   the larger) goes from the :math:`\Sigma` side to the other side, - otherwise (:func:`pytec3d.tree_gauge.edges` of
+   the layer cells gives each edge with its start and end point in that orientation).
+4. **The junction with the conductor**: the conductor has ``_T`` = 0 on its surface edges, except the crossing edges
+   of the layer that lie on its surface: those belong to the cut (its value), not to the ``_T`` = 0 set.
+5. **The drive**, one of:
+
+   * *induced* (the current is an unknown, e.g. a ring in a field): couple all the crossing edges on one DOF, ``CP``
+     id 1 on their midside nodes and ids 2 and 3 on the corner nodes of the two sides (they give the solver the
+     orientation of each edge), ``add_dof_couplings({1: ["T"], 2: ["T"], 3: ["T"]})``; that DOF is the net
+     current (benchmark ``ring``);
+   * *imposed current*: ``_T`` = :math:`\pm I(t)` on every crossing edge (signed as in 3), no coupling (``ring_transport``
+     ``current``, ``norris_wire``);
+   * *imposed voltage* around the loop: the coupling of *induced* and ``VLTG`` = V(t) on one midside node of a crossing
+     edge (``ring_transport`` ``voltage``).
+6. **The outer boundary.** A free boundary (flux wall) needs nothing. Where the cut meets a boundary with a given
+   :math:`\phi`, :math:`\phi` jumps by I across the cut, but it is one nodal field: the jump is across the layer
+   (carried there by T), so the boundary nodes on :math:`\Sigma` take the value of the side away from the layer and the
+   nodes on the far face of the layer that of the layer side (``norris_wire``: :math:`\phi=-I\theta/2\pi`, the nodes
+   on the cut ray at :math:`\theta=2\pi`, those above it near 0).
+
+*Several conductors.* Each conductor with a net current has its own cut, with its own coupling ids (1, 2, 3 for the
+first, 4, 5, 6 for the second, ...); the cuts must not cross each other. Cuts are exactly what makes the air simply
+connected, so making more of them is the way, with one rule: **one free cut DOF per independent hole**. A second free
+cut on the same loop is singular (a constant shift of :math:`\phi` between the two cuts trades one DOF for the other);
+an extra cut whose crossing edges are all given (0, or a current) is harmless. Connections:
+
+* *series* (the same current): one coupling id for the crossing edges of all their cuts, or the same imposed I on each;
+* *parallel* (the same voltage, the currents sharing by themselves): each its own coupled DOF, each loaded with the
+  same ``VLTG``;
+* a *total* current shared between conductors in parallel, a resistor in series, an external network: not available
+  (a circuit of cut DOFs would be needed; the A, V-A types have coils with circuits).
+
+Without a cut a ring can have its hole filled with a weak conductor (below). A coil given as T fixed on its edges is
+a cut of the same kind, thick, with its current spread over the winding (:ref:`el-tphi3d`).
+
+Examples: ``examples/ring_3D_tphi`` (3D, induced), ``examples/wire_2D_tphi`` (2D, imposed current, the jump of
+:math:`\phi` on the box); :doc:`../tutorials/tutorial_tphi_cuts` runs the induced, current and voltage drives and a
+ring without cut.
+
+.. _el-tphi2d:
+
+``TPHI2D_edge`` (index 8): 2D T-phi
+-----------------------------------
+
+The T-phi formulation on 2D cells: :math:`\mathbf{H}=\mathbf{T}-\nabla\phi` in the plane, T an in-plane Nedelec field
+(NEDELEC_ONE on QUAD8 / TRI6 cells: quadratic cells, the DOFs on the midside nodes), the current density and the
+electric field out of the plane (component 2 of ``Jt`` and ``E``): the 2D H-formulation of superconductor
+cross-sections (tapes, wires, cables, bulks in a transverse field). The same weak form, domains, laws (``power_law``,
+``power_law_b``, ``bh_curve_h``), gauges, static steps, cuts and fixed-T coils as ``TPHI3D_edge``.
+
+* **Planar**: an infinite length along z, the integrals per ``thickness`` (``rc.thickness``, default 1 m: results per
+  metre). A conductor carrying a net :math:`I_z` (a tape or a wire with a transport current) needs a cut: a one-cell
+  strip of ``CUT_LAYER`` cells from its surface to the boundary (:ref:`el-cuts`). A conductor in a transverse field
+  with no net current needs none.
+* **Axisymmetric** (``option3`` = 1): (x, y) = (r, z), the integrals times :math:`2\pi r`, component 2 the
+  azimuthal one: :math:`J_\theta=(\nabla\times\mathbf{T})_\theta=\partial_zT_r-\partial_rT_z`. The axis is a natural
+  boundary of :math:`\phi` (:math:`B_r=0`). A conductor whose section touches the axis (a ball, a cylinder) needs no
+  cut: the air of the half-plane is simply connected. A ring, a section away from the axis, with a net azimuthal
+  current (a coil turn, a vessel) is encircled by air in the half-plane: it needs a cut, a strip from its section to
+  the axis or to the boundary.
+* Benchmarks: ``phi2d_cylinder``, ``phi2d_axisym`` (magnetostatics, 0.3 % and 0.9 % from the exact H),
+  ``eddy_sphere`` (``TPHI2D_edge_axisym``: the conducting ball as a half model, its moment within 2.3 %),
+  ``norris_wire`` (the AC transport loss of a round wire against Norris's formula).
+* Examples: ``examples/wire_2D_tphi`` (planar, a cut, power law), ``examples/bulk_2D_tphi_axisym`` (axisymmetric,
+  ``power_law_b``, a static step then transient steps); tutorial :doc:`../tutorials/tutorial_superconductors`.
+
+.. _el-phi3d:
+
+``PHI3D_nodal`` (index 7): magnetostatics with the scalar potential
+-------------------------------------------------------------------
+
+:math:`\mathbf{H}=\mathbf{H}_s-\nabla\phi`, with :math:`\phi` (``PHI``, Lagrange) and the source field
+:math:`\mathbf{H}_s` (``Hs``, Nedelec) both unknowns of **one** static system: :math:`\mathbf{H}_s` has the curl of the
+source current, :math:`\phi` makes B solenoidal. Domains: NON_CONDUCTING, SOFT_MAGNETIC (``bh_curve_h``),
+HARD_MAGNETIC (``M``), STRANDED_CONDUCTOR (``me.Js``, the source current density, a cell array). Static
+(``time_order = 0``), first order only (as T-phi). Theory: :ref:`theory-potentials`.
+
+Weak form
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 10 60
+
+      * - Domain
+        - Matrix
+        - Term
+      * - all
+        - K
+        - :math:`\int\nabla\times\mathbf{h}\cdot\nabla\times\mathbf{H}_s` (the rows of Hs)
+      * - STRANDED_CONDUCTOR
+        - F
+        - :math:`\int\nabla\times\mathbf{h}\cdot\mathbf{J}_s`: :math:`\nabla\times\mathbf{H}_s` is the solenoidal part
+          of :math:`\mathbf{J}_s` (any ``Js`` is consistent)
+      * - all
+        - K
+        - :math:`\int\nabla q\cdot\mu(\nabla\phi-\mathbf{H}_s)` (the rows of :math:`\phi`)
+      * - HARD_MAGNETIC
+        - F
+        - :math:`\int\nabla q\cdot\mathbf{B}_r`, :math:`\mathbf{B}_r=\mu_0\mu_r\mathbf{M}`
+
+   The coupling is one way (the Hs rows do not see :math:`\phi`): the matrix is block triangular, not symmetric. With
+   the B-H law Newton refactors it all at each iteration, the Hs block included.
+
+Outputs
+   ``H`` :math:`=\mathbf{H}_s-\nabla\phi`, ``B`` :math:`=\mu\mathbf{H}` (+ :math:`\mathbf{B}_r`) (nodes and elements);
+   ``Jt`` :math:`=\nabla\times\mathbf{H}_s` (elements: the current the source field carries); ``Hs`` (nodes).
+
+Setup
+   * Gauge of Hs: a tree of all the edges rooted on the box, ``tree_gauge.tree_gauge(grid, all_points, box_points,
+     array_name="_Hs")``, and ``_Hs`` = 0 on the box edges (:math:`\mathbf{n}\times\mathbf{H}_s=0`). Needed also
+     without a source (Hs = 0).
+   * ``_PHI`` as in T-phi: the applied field on the boundary, or a free boundary (a flux wall) with one node fixed.
+   * **No cancellation error** in iron: :math:`\mathbf{H}_s` and :math:`\nabla\phi` are in the same edge space (the
+     gradients of first-order Lagrange functions are Nedelec functions), so where they cancel (in high-:math:`\mu`
+     iron, :math:`\mathbf{H}\approx0`) they cancel exactly. A source field per cell (piecewise constant) is not in that
+     space: it is the textbook cancellation case.
+   * **Hs given instead of solved**: ``_Hs`` on every edge (the circulations of a known field with the right curl,
+     e.g. of the Biot-Savart field of the coils, component 2 of the midside points in libMesh's orientation) removes
+     the Hs rows: only :math:`\phi` is solved. Circulations, not point values: their discrete curl is then exactly
+     the flux of the current through each face (Stokes), so the cancellation stays exact.
+   * Cost: Hs adds one unknown per edge of the whole mesh (air included) to the system of :math:`\phi`; a separate
+     source solve would need its own factorization anyway, and the edge values transferred.
+   * Benchmarks: ``stranded_sphere``, ``closed_core`` (the iron frame around a coil: Js, Hs given, T0 as M; against
+     A, V-A), ``phi3d_sphere``, ``phi3d_magnet``, ``phi_bh_sphere``, ``magnet_bh``.
+   * Example: ``examples/core_3D_phi`` (a coil on a closed iron frame, B-H curve); tutorial
+     :doc:`../tutorials/tutorial_scalar_potential` (Hs solved or given on the edges, linear and saturating iron).
 
 .. _el-laws:
 
@@ -640,13 +757,14 @@ Each element type of ``element_types.json`` lists:
 * ``dimension``, ``domains`` (the domains a TYPE row may give it), ``time_order``, ``out_of_plane_length`` (2D),
   ``constants`` (``mu0``);
 * ``parameters``: ``mat.`` material properties, ``rc.`` real constants, ``me.`` element loads (cell arrays), ``mn.``
-  nodal loads (point arrays), each with the domains where it exists and an optional default; the suffix ``[]`` or
-  ``[][]`` makes it a vector or a tensor;
+  nodal loads (point arrays), each with the domains where it exists and an optional default; the suffix ``[]`` or ``[][]`` makes it a vector or a tensor;
 * ``expressions``: derived coefficients, C++ expressions on the libMesh types, optionally per domain;
 * ``dof_fields``, ``nodal_fields``, ``element_fields``: the fields, their finite elements and domains; a Lagrange
   DOF field may name an ``mn.`` parameter of its own type as its ``nodal_loads`` (a scalar for a scalar field, a
-  vector, in the nodal frames, for a vector field: :doc:`loads`), and may be first order whatever ``option2``
-  (``"order": "first"``, as ``PHI`` of ``HPHI3D_edge``);
+  vector, in the nodal frames, for a vector field: :doc:`loads`); Lagrange fields have the order ``option2``,
+  NEDELEC_ONE fields first order;
+* ``second_order``: ``false`` when the type cannot run second order (``TPHI3D_edge``, ``PHI3D_nodal``: option2 = 2 is
+  refused by the model check); absent by default;
 * ``dof_kernels`` (``K`` and ``F`` lists), ``nodal_kernels``, ``element_kernels``: the terms, each
   ``{"trial": "grad(dt(V))", "coeff": "-sigma", "test": "A", "domain": [...]}``. A trial with ``dt()`` goes to C;
   a coefficient is a parameter or expression with an optional sign, or a sign alone (``"-"``: minus one);

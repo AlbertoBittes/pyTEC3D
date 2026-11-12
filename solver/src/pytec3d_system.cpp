@@ -874,14 +874,31 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
         const bool nonlinear_element = builder.nonlinear_element();
         if (nonlinear_element)
         {
-            builder.build_element_tangent_stiffness_residual(scheme);
+            builder.build_element_tangent_stiffness_residual(
+                scheme, this->typed_equation_systems().get_solver_settings().nonlinear.picard);
             auto &tangent_ke = builder.get_matrices()[ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
             auto &residual = builder.get_vectors()[ElementBuilder::VectorsSet::RESIDUAL_VECTORS][0];
 
             if (assemble_jacobian)
                 linear_ke += tangent_ke;
             if (assemble_residual)
+            {
+                // The stored rates of the law outputs under dt(): hv_d q'_n + ha_d q''_n (ElementBuilder: the rest).
+                if (scheme.transient())
+                    if (const auto it = old_law_rates_.find(elem->id()); it != old_law_rates_.end())
+                    {
+                        const std::array<std::array<libMesh::Real, 2>, 2> h = {{{scheme.hv_v, scheme.ha_v},
+                                                                                {scheme.hv_a, scheme.ha_a}}};
+                        for (unsigned int d = 0; d < 2; ++d)
+                        {
+                            if (it->second.v[d].size() == residual.size())
+                                residual.add(h[d][0], it->second.v[d]);
+                            if (it->second.a[d].size() == residual.size())
+                                residual.add(h[d][1], it->second.a[d]);
+                        }
+                    }
                 linear_rhs += residual;
+            }
 
             if (assemble_jacobian)
             {
@@ -966,6 +983,55 @@ void pyTEC3DNonLinearSystem::assemble_jacobian_only()
 void pyTEC3DNonLinearSystem::assemble_residual_only()
 {
     this->assemble_system_impl(false, true);
+}
+
+void pyTEC3DNonLinearSystem::init_time_step(const TimeStepInput &time_step)
+{
+    pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>::init_time_step(time_step);
+    if (const auto *step = this->current_time_step(); step && step->updated)
+        old_law_rates_ = law_rates_;
+}
+
+void pyTEC3DNonLinearSystem::update_time_derivatives()
+{
+    pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>::update_time_derivatives();
+
+    // q' = c_v q(u) + hu_v q(u_n) + hv_v q'_n + ha_v q''_n and q'' likewise (as the DOFs): the rates of the law outputs
+    // under dt(), per element; zero on a static step.
+    const TimeScheme scheme = this->typed_equation_systems().time_scheme();
+    const libMesh::MeshBase &mesh = this->typed_equation_systems().get_mesh();
+    ElementBuilder builder(&this->typed_equation_systems());
+    law_rates_.clear();
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        builder.set_element_data(elem);
+        if (!builder.rate_residual_element())
+            continue;
+        LawRates rates;
+        const auto old = old_law_rates_.find(elem->id());
+        for (unsigned int d = 0; d < 2; ++d)
+        {
+            const libMesh::DenseVector<libMesh::Number> q = builder.law_output(*this->current_local_solution, d + 1);
+            const libMesh::DenseVector<libMesh::Number> q_n = builder.law_output(*this->old_local_solution, d + 1);
+            const auto rate = [&](libMesh::Real c, libMesh::Real hu, libMesh::Real hv, libMesh::Real ha)
+            {
+                libMesh::DenseVector<libMesh::Number> x(q.size());
+                if (!scheme.transient())
+                    return x;
+                x.add(c, q);
+                x.add(hu, q_n);
+                if (old != old_law_rates_.end() && old->second.v[d].size() == x.size())
+                {
+                    x.add(hv, old->second.v[d]);
+                    x.add(ha, old->second.a[d]);
+                }
+                return x;
+            };
+            rates.v[d] = rate(scheme.c_v, scheme.hu_v, scheme.hv_v, scheme.ha_v);
+            rates.a[d] = rate(scheme.c_a, scheme.hu_a, scheme.hv_a, scheme.ha_a);
+        }
+        law_rates_.emplace(elem->id(), std::move(rates));
+    }
 }
 
 void pyTEC3DNonLinearSystem::record_newton_iterate(libMesh::Real residual)

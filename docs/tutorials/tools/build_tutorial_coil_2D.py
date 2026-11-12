@@ -147,7 +147,7 @@ The element library tells which arrays an element type reads and writes (User ma
 code("""
 print("element types:", element_library.element_type_names())
 print("domains      :", element_library.domains())
-for a in element_library.grid_arrays(["AV2D_nodal"]):
+for a in element_library.grid_arrays(["AVA2D_nodal"]):
     print(f"  {a.name:6s} on {a.location:4s}, {a.components} component(s), default {a.fill}")
 """)
 
@@ -353,7 +353,7 @@ md("""
   the next ones with theta = 0.5.
 * Make the first step static (`time_step["transient_effects"] = False`): the passive ring then carries no current at
   step 1.
-* Use the time-integrated formulation: set `"element_type": "AV2D_nodal_timint"` in every row of the model data
+* Use the time-integrated formulation: set `"element_type": "AVA2D_nodal_timint"` in every row of the model data
   (before loading). `_V` then fixes the time integral of the voltage.
 * Add an iron yoke with a B-H curve, as in `examples/coil_2D_avoltemf_ferr` (a stranded coil with an iron frame) (User manual: *Nonlinear Materials*).
 * Replace the driven ring by a stranded coil with its circuit equation, as in `examples/coil_2D_avoltemf`.

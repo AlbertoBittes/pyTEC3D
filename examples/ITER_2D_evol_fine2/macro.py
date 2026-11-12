@@ -22,7 +22,7 @@
 #   17860 QUAD4 + 16 TRI3 cells, with the passive structures as conductors (TYPE 24).
 #
 # Model data (model_data.json)
-#   Element types (AV2D_nodal, option2 = 1, option3 = 1): 21 NON_CONDUCTING (air), 23 STRANDED_CONDUCTOR (coils and plasma
+#   Element types (AVA2D_nodal, option2 = 1, option3 = 1): 21 NON_CONDUCTING (air), 23 STRANDED_CONDUCTOR (coils and plasma
 #   region: Js imposed), 24 SOLID_CONDUCTOR (vacuum vessel and passive structures: eddy currents, no
 #   applied voltage), 25 STRANDED_COIL (row not used by the cells of this mesh).
 #   Materials: mur = 1; rho = 8e-7 Ohm m for the structures (MATERIAL 24).

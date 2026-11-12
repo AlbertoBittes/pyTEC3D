@@ -58,7 +58,7 @@ Key concepts
        the Dirichlet values (``_A``, ``_V``...: ``NaN`` = free), the nodal loads (``CURR``, ``AMPS``), the coupling ids
        (``CP_0``, ``CP_1``...) and the nodal frames (``node_angles``). See :doc:`user_manual/mesh`.
    * - **Element type**
-     - A formulation of the library (``AV2D_nodal``, ``AV3D_nodal``, ``AV3D_edge`` and their time-integrated
+     - A formulation of the library (``AVA2D_nodal``, ``AVA3D_nodal``, ``AVA3D_edge`` and their time-integrated
        variants), chosen per ``TYPE`` id together with a **domain** (air, conductor, coil, magnet...), an FE order and
        the axisymmetric flag. See :doc:`user_manual/element_library`.
    * - **Selection**

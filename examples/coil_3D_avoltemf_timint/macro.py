@@ -1,14 +1,14 @@
 # =====================================================================================================================
-# coil_3D_avoltemf_timint - coil_3D_avoltemf with time-integrated coil unknowns (AV3D_nodal_timint)
+# coil_3D_avoltemf_timint - coil_3D_avoltemf with time-integrated coil unknowns (AVA3D_nodal_timint)
 # =====================================================================================================================
 #
 # What this example shows
 # -----------------------
 # The analysis of coil_3D_avoltemf (read that macro first: the script is the same) with the element type
-# AV3D_nodal_timint. In this formulation every electric unknown is a time integral, so that all the electric terms
+# AVA3D_nodal_timint. In this formulation every electric unknown is a time integral, so that all the electric terms
 # are in the damping matrix C and the coupled system is symmetric:
 #   * coil terminals: VOLT -> int_0^t VOLT dt [V s] and EMF -> int_0^t EMF dt = Psi, the linked flux [Wb];
-#   * passive ring: V is the time-integrated scalar potential (in AV3D_nodal it is the potential itself).
+#   * passive ring: V is the time-integrated scalar potential (in AVA3D_nodal it is the potential itself).
 # Consequences for the input: CURR is still the coil current [A]; _VOLT = 10000 in step 2 fixes the time integral of
 # the terminal voltage (10000 V s at t = 2e-5 s), not the voltage. On a static step the time-integrated DOFs, which
 # have no stiffness row, are fixed to zero.
@@ -19,9 +19,9 @@
 #
 # Model data (model_data.json)
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: 4 = AV3D_nodal_timint / NON_CONDUCTING            / 1 / 0   air
-#   * 23: 4 = AV3D_nodal_timint / STRANDED_COIL             / 1 / 0   coil: A + int VOLT + int EMF
-#   * 24: 4 = AV3D_nodal_timint / SOLID_CONDUCTOR           / 1 / 0   passive ring: A + V (time-integrated)
+#   * 21: 4 = AVA3D_nodal_timint / NON_CONDUCTING            / 1 / 0   air
+#   * 23: 4 = AVA3D_nodal_timint / STRANDED_COIL             / 1 / 0   coil: A + int VOLT + int EMF
+#   * 24: 4 = AVA3D_nodal_timint / SOLID_CONDUCTOR           / 1 / 0   passive ring: A + V (time-integrated)
 #   Materials: 21 air; 23 coil; 24 rho = 2e-8 Ohm m (mur = 1).
 #   Real constants 1: cross_section = 0.04 m^2, turns = 2000, resistance = 20 Ohm, volume = 0.12566 m^3 (whole coil),
 #     symmetry = 12, T = (0, 1, 0) in the cylindrical element coordinate system 1 (toroidal).
@@ -33,7 +33,7 @@
 # Results: output/coil_3D_avoltemf_timint_out_<n>.vtu, coil_3D_avoltemf_timint_steps.csv, .log
 #
 # How to run:  cd examples/coil_3D_avoltemf_timint && python macro.py
-# Documentation: "Element library" (AV3D_nodal_timint), "Theory - time-integrated potentials, stranded coils".
+# Documentation: "Element library" (AVA3D_nodal_timint), "Theory - time-integrated potentials, stranded coils".
 # =====================================================================================================================
 
 

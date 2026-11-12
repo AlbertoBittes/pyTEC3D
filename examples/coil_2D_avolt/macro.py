@@ -27,9 +27,9 @@
 # Model data (model_data.json)
 # ----------------------------
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: 0 = AV2D_nodal / 0 = NON_CONDUCTING            / 2 / 1   air: only A_z, no current
-#   * 23: 0 = AV2D_nodal / 4 = CIRCUIT_COUPLED_CONDUCTOR / 2 / 1   active ring: A_z + V (terminal voltage)
-#   * 24: 0 = AV2D_nodal / 5 = SOLID_CONDUCTOR           / 2 / 1   passive ring: A_z only; in 2D a closed, shorted
+#   * 21: 0 = AVA2D_nodal / 0 = NON_CONDUCTING            / 2 / 1   air: only A_z, no current
+#   * 23: 0 = AVA2D_nodal / 4 = CIRCUIT_COUPLED_CONDUCTOR / 2 / 1   active ring: A_z + V (terminal voltage)
+#   * 24: 0 = AVA2D_nodal / 5 = SOLID_CONDUCTOR           / 2 / 1   passive ring: A_z only; in 2D a closed, shorted
 #                                                                  massive conductor carrying eddy currents
 #   Materials (MATERIAL id): mur relative permeability, rho resistivity [Ohm m] (3x3 tensors, here isotropic)
 #   * 21: mur = 1, rho = 1      (rho is not used: NON_CONDUCTING elements have no conductivity term)
@@ -60,7 +60,7 @@
 #   run report (model tables, constraints, solver statistics, timings).
 #
 # How to run:  cd examples/coil_2D_avolt && python macro.py
-# Documentation: docs, "Examples" (2D axisymmetric coils), "Element library" (AV2D_nodal) and "Theory"
+# Documentation: docs, "Examples" (2D axisymmetric coils), "Element library" (AVA2D_nodal) and "Theory"
 # (2D circuit-coupled conductor, theta method).
 # =====================================================================================================================
 

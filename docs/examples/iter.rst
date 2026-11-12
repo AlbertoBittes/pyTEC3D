@@ -19,24 +19,24 @@ The examples cover different meshes and element families. The standard cases (``
      - Element type
      - Content
    * - ``ITER_2D_carma``
-     - ``AV2D_nodal`` (quadratic)
+     - ``AVA2D_nodal`` (quadratic)
      - Equilibrium on a second-order mesh (QUAD8 / TRI6): the starting point of ``ITER_2D_evol_carma`` and
        ``ITER_3D_evol_coils_edge``.
    * - ``ITER_2D_fine2``
-     - ``AV2D_nodal`` (linear)
+     - ``AVA2D_nodal`` (linear)
      - Equilibrium on a refined linear mesh: the starting point of ``ITER_2D_evol_fine2`` and ``ITER_3D_evol_fine2``.
    * - ``ITER_2D_evol_carma``
-     - ``AV2D_nodal`` (quadratic)
+     - ``AVA2D_nodal`` (quadratic)
      - Vertical displacement from ``ITER_2D_carma``; coils with fixed current densities.
    * - ``ITER_2D_evol_fine2``
-     - ``AV2D_nodal`` (linear)
+     - ``AVA2D_nodal`` (linear)
      - Vertical displacement from ``ITER_2D_fine2``.
    * - ``ITER_3D_evol_fine2``
-     - ``AV3D_nodal_timint``
+     - ``AVA3D_nodal_timint``
      - Vertical displacement on a 1 degree sector of the fine2 mesh (time-integrated V), with halo currents
        injected into the vessel wall from the limiter phase.
    * - ``ITER_3D_evol_coils_edge``
-     - ``AV3D_edge``
+     - ``AVA3D_edge``
      - Vertical displacement on the ``ITER_2D_carma`` mesh revolved over 2 degrees in 4 cells (quadratic), with edge elements and a tree gauge, the coils as voltage-driven stranded coils (their
        currents respond to the displacement), halo currents.
 

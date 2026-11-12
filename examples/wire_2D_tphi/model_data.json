@@ -1,0 +1,103 @@
+{
+  "element_types": {
+    "1": {
+      "element_type": "TPHI2D_edge",
+      "option1": "NON_CONDUCTING",
+      "option2": 1,
+      "option3": 0
+    },
+    "2": {
+      "element_type": "TPHI2D_edge",
+      "option1": "SOLID_CONDUCTOR",
+      "option2": 1,
+      "option3": 0
+    },
+    "3": {
+      "element_type": "TPHI2D_edge",
+      "option1": "CUT_LAYER",
+      "option2": 1,
+      "option3": 0
+    }
+  },
+  "materials": {
+    "1": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    "2": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rho": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    "3": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    }
+  },
+  "constants": {
+    "1": {
+      "thickness": 1.0
+    }
+  }
+}

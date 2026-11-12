@@ -1056,6 +1056,10 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
     auto time_integration_constraints = build_time_integration_constraints();
     for (const auto &entry : time_integration_constraints)
     {
+        // A Dirichlet value wins: a DOF without stiffness in a static step may be given (e.g. a coil as T fixed on the
+        // edges of a CUT_LAYER, T-phi).
+        if (point_constraints.count(entry.first))
+            continue;
         ConstraintEntry forced_zero = entry.second;
         forced_zero.row.clear();
         forced_zero.value = 0.0;

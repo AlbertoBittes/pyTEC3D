@@ -1,10 +1,10 @@
 # =====================================================================================================================
-# coil_2D_avolt_timint - coil_2D_avolt with the time-integrated electric potential (AV2D_nodal_timint)
+# coil_2D_avolt_timint - coil_2D_avolt with the time-integrated electric potential (AVA2D_nodal_timint)
 # =====================================================================================================================
 #
 # What this example shows
 # -----------------------
-# The same analysis as coil_2D_avolt (read that macro first), solved with the element type AV2D_nodal_timint. In this
+# The same analysis as coil_2D_avolt (read that macro first), solved with the element type AVA2D_nodal_timint. In this
 # formulation the electric DOF of the circuit-coupled conductor is the TIME INTEGRAL of the terminal voltage,
 # v(t) = int_0^t V dt  [V s], so that the electric terms move from the stiffness K to the damping C and the coupled
 # A-v system is symmetric. The script is identical; what changes is the meaning of the values:
@@ -19,9 +19,9 @@
 #
 # Model data (model_data.json)
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: 3 = AV2D_nodal_timint / NON_CONDUCTING            / 2 / 1   air
-#   * 23: 3 = AV2D_nodal_timint / CIRCUIT_COUPLED_CONDUCTOR / 2 / 1   active ring: A_z + time-integrated V
-#   * 24: 3 = AV2D_nodal_timint / SOLID_CONDUCTOR           / 2 / 1   passive shorted ring (eddy currents)
+#   * 21: 3 = AVA2D_nodal_timint / NON_CONDUCTING            / 2 / 1   air
+#   * 23: 3 = AVA2D_nodal_timint / CIRCUIT_COUPLED_CONDUCTOR / 2 / 1   active ring: A_z + time-integrated V
+#   * 24: 3 = AVA2D_nodal_timint / SOLID_CONDUCTOR           / 2 / 1   passive shorted ring (eddy currents)
 #   Materials: 21 air, 23 rho = 1e-7, 24 rho = 1e-8 (mur = 1).  Real constants: 1: thickness = 1.
 #   DOF couplings (set by the macro, add_dof_couplings): 1 -> ["V"].
 #
@@ -30,7 +30,7 @@
 # Results: output/coil_2D_avolt_timint_out_<n>.vtu, coil_2D_avolt_timint_steps.csv, coil_2D_avolt_timint.log
 #
 # How to run:  cd examples/coil_2D_avolt_timint && python macro.py
-# Documentation: "Element library" (AV2D_nodal_timint), "Theory - time-integrated potentials".
+# Documentation: "Element library" (AVA2D_nodal_timint), "Theory - time-integrated potentials".
 # =====================================================================================================================
 
 

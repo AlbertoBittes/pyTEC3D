@@ -6,7 +6,7 @@
  * with the model (model_input.h); it is read here. Only these sections are read; the keys that name something are checked against the registries
  * (registries.h):
  *
- *   "element_types":  { "<TYPE id>": { "element_type": 0 | "AV2D_nodal",       // index or name in element_types.json
+ *   "element_types":  { "<TYPE id>": { "element_type": 0 | "AVA2D_nodal",       // index or name in element_types.json
  *                                      "option1": 6 | "STRANDED_COIL",         // domain: index or name in domains.json
  *                                      "option2": 1,                           // FE order (default 1)
  *                                      "option3": 0 } }                        // axisymmetric (default 0)

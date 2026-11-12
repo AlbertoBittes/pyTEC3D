@@ -7,7 +7,7 @@
             "option3": 1
         },
         "23": {
-            "element_type": "AV2D_nodal",
+            "element_type": "AVA2D_nodal",
             "option1": "SOLID_CONDUCTOR",
             "option2": 1,
             "option3": 1

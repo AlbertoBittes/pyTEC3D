@@ -576,12 +576,53 @@ class Model:
         laws[key] = entries[0] if len(entries) == 1 else entries
         LOGGER.info("Nonlinear law '%s' set on id %s (data: %s).", law, key, ", ".join(sorted(data)) or "none")
 
-    def set_bh_curve(self, material_id: int, table: Any) -> None:
-        """Select the ``bh_curve`` law on a material, with its BH curve given as rows ``[H, B]``.
+    def set_power_law(self, material_id: int, table: Any, jc_b: Any = None) -> None:
+        """Select the E-J law of the conductors of a material (e.g. a superconductor's power law), with its curve given
+        as rows ``[J, E]``, J and E increasing, from J = 0: the resistivity (or conductivity) is the output of the law.
+
+        ``TPHI3D_edge``, ``TPHI2D_edge``: ``power_law``, rho(J) = E(J) / J (secant), tangent from dE/dJ. The 3D A, V-A
+        types: ``power_law_e``, the inverse sigma(E) = J(E) / E, tangent from dJ/dE. The curve is piecewise linear and
+        goes on with its first and last segments outside the points: its first segment sets the resistivity at zero
+        current (e.g. a normal-state floor ``E = rho0 J + Ec (J / Jc)**n``), and enough points must follow the
+        curvature.
+
+        With ``jc_b`` (``TPHI3D_edge``, ``TPHI2D_edge``): ``power_law_b``, a critical current depending on the field,
+        ``E(J, B) = E0(J / s(|B|))``, E0 the curve of ``table`` (at B = 0) and s = Jc(B) / Jc(0) the curve of ``jc_b``,
+        ``|B| = mu0 |H|`` (a non-magnetic conductor), e.g. the Kim model ``s = 1 / (1 + |B| / B0)``. The tangent is
+        that at fixed B: the Jacobian has no term of the variation of B (no cross-coupling), so Newton converges more
+        slowly where s varies fast.
 
         Args:
             material_id: The MATERIAL id.
-            table: Shape (N, 2): H and B, B increasing.
+            table: Shape (N, 2): J and E, both increasing.
+            jc_b: Shape (M, 2): ``|B|`` increasing and ``s(|B|) > 0``, or None.
+
+        Raises:
+            ModelLockedError: If the model is locked.
+            ValueError: If ``table`` or ``jc_b`` does not have shape (N, 2).
+        """
+        rows = np.asarray(table, dtype=float)
+        if rows.ndim != 2 or rows.shape[1] != 2:
+            raise ValueError(f"table must have shape (N, 2) with columns [J, E], got {rows.shape}.")
+        if jc_b is not None:
+            scaling = np.asarray(jc_b, dtype=float)
+            if scaling.ndim != 2 or scaling.shape[1] != 2:
+                raise ValueError(f"jc_b must have shape (M, 2) with columns [B, Jc(B) / Jc(0)], got {scaling.shape}.")
+            self.set_nonlinear_law(material_id, "power_law_b", J=rows[:, 0].tolist(), E=rows[:, 1].tolist(),
+                                   Bjc=scaling[:, 0].tolist(), jc=scaling[:, 1].tolist())
+            return
+        av = any(name.startswith("AVA") for name in self.element_type_names() or [])
+        self.set_nonlinear_law(material_id, "power_law_e" if av else "power_law", J=rows[:, 0].tolist(),
+                               E=rows[:, 1].tolist())
+
+    def set_bh_curve(self, material_id: int, table: Any) -> None:
+        """Select the B-H law on a material, with its BH curve given as rows ``[H, B]``, H and B increasing:
+        ``bh_curve`` (input B, replaces nu, tangent from dH/dB) or, for the scalar potential types (``TPHI3D_edge``,
+        ``TPHI2D_edge``, ``PHI3D_nodal``), ``bh_curve_h`` (input H, replaces mu, tangent from dB/dH).
+
+        Args:
+            material_id: The MATERIAL id.
+            table: Shape (N, 2): H and B, both increasing.
 
         Raises:
             ModelLockedError: If the model is locked.
@@ -590,7 +631,9 @@ class Model:
         rows = np.asarray(table, dtype=float)
         if rows.ndim != 2 or rows.shape[1] != 2:
             raise ValueError(f"table must have shape (N, 2) with columns [H, B], got {rows.shape}.")
-        self.set_nonlinear_law(material_id, "bh_curve", B=rows[:, 1].tolist(), H=rows[:, 0].tolist())
+        names = self.element_type_names() or []
+        law = "bh_curve_h" if {"TPHI3D_edge", "TPHI2D_edge", "PHI3D_nodal"} & set(names) else "bh_curve"
+        self.set_nonlinear_law(material_id, law, B=rows[:, 1].tolist(), H=rows[:, 0].tolist())
 
     # ------------------------------------------------------------------------------------------- field data
 

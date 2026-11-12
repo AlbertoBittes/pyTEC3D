@@ -83,7 +83,7 @@ of ``_A`` (the component of the field) as given, and its couplings and nodal loa
 Edge elements
 ~~~~~~~~~~~~~
 
-With ``AV3D_edge*`` element types, the DOFs of A are the circulations along the edges, stored on the **midside
+With ``AVA3D_edge*`` element types, the DOFs of A are the circulations along the edges, stored on the **midside
 nodes** in **component 2** of ``_A``. Fixing it on the midside nodes of a face fixes the tangential component of A on
 that face, :math:`\mathbf{n}\times\mathbf{A}=0` (far field and "B tangent" symmetry planes). The values of ``_A`` on
 corner nodes and the other components are not used. No nodal frame rotation is needed. Restrict a selection to the
@@ -96,7 +96,7 @@ The vector potential is defined up to a gradient, :math:`\mathbf{A}+\nabla\psi` 
 the eddy-current term fixes it; in the non-conducting regions the curl-curl matrix is singular. pyTEC3D handles this
 as follows (:ref:`theory-gauge`):
 
-* **nodal elements** (``AV2D_*``, ``AV3D_nodal*``): the 3D nodal types include a Coulomb-gauge penalty term
+* **nodal elements** (``AVA2D_*``, ``AVA3D_nodal*``): the 3D nodal types include a Coulomb-gauge penalty term
   :math:`\int\nu_g(\nabla\cdot\mathbf{w})(\nabla\cdot\mathbf{A})`, nothing to do (2D has no gauge freedom);
 * **edge elements**: build a tree-cotree gauge with :func:`pytec3d.tree_gauge.tree_gauge` after the Dirichlet values
   of A are set. It builds a spanning tree of the edges of the **selected cells** (the region to gauge), grown from the

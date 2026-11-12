@@ -3,12 +3,123 @@
         "bh_curve": {
             "source": "mat",
             "input": "B",
-            "curve": {"x": "B", "y": "H"},
-            "expressions": {"b": "B.norm()", "nu_s": "b > 1e-14 ? curve.value(b) / b : curve.slope(0.0)"},
+            "curve": {
+                "x": "B",
+                "y": "H"
+            },
+            "expressions": {
+                "b": "B.norm()",
+                "nu_s": "b > 1e-14 ? curve.value(b) / b : curve.slope(0.0)"
+            },
             "coefficients": {
-                "nu[][]": {"secant": "nu_s * I",
-                           "tangent": "nu_s * I + (b > 1e-14 ? (curve.slope(b) - nu_s) / (b * b) : 0.0) * outer_product(B, B)"},
-                "nu_gauge": {"secant": "nu_s"}
+                "nu[][]": {
+                    "secant": "nu_s * I",
+                    "tangent": "nu_s * I + (b > 1e-14 ? (curve.slope(b) - nu_s) / (b * b) : 0.0) * outer_product(B, B)"
+                },
+                "nu_gauge": {
+                    "secant": "nu_s"
+                }
+            }
+        },
+        "bh_curve_h": {
+            "element_types": [
+                "TPHI3D_edge",
+                "PHI3D_nodal"
+            ],
+            "source": "mat",
+            "input": "H",
+            "curve": {
+                "x": "H",
+                "y": "B"
+            },
+            "expressions": {
+                "h": "H.norm()",
+                "mu_s": "h > 1e-14 ? curve.value(h) / h : curve.slope(0.0)"
+            },
+            "coefficients": {
+                "mu[][]": {
+                    "secant": "mu_s * I",
+                    "tangent": "mu_s * I + (h > 1e-14 ? (curve.slope(h) - mu_s) / (h * h) : 0.0) * outer_product(H, H)"
+                }
+            }
+        },
+        "power_law_e": {
+            "element_types": [
+                "AVA3D_nodal",
+                "AVA3D_edge",
+                "AVA3D_nodal_timint",
+                "AVA3D_edge_timint"
+            ],
+            "source": "mat",
+            "input": "E",
+            "curve": {
+                "x": "E",
+                "y": "J"
+            },
+            "expressions": {
+                "e": "E.norm()",
+                "s": "e > 1e-100 ? curve.value(e) / e : curve.slope(0.0)"
+            },
+            "coefficients": {
+                "sigma[][]": {
+                    "secant": "s * I",
+                    "tangent": "s * I + (e > 1e-100 ? (curve.slope(e) - s) / (e * e) : 0.0) * outer_product(E, E)"
+                }
+            }
+        },
+        "power_law": {
+            "element_types": [
+                "TPHI3D_edge",
+                "TPHI2D_edge"
+            ],
+            "source": "mat",
+            "input": "Jt",
+            "curve": {
+                "x": "J",
+                "y": "E"
+            },
+            "expressions": {
+                "j": "Jt.norm()",
+                "r": "j > 1e-100 ? curve.value(j) / j : curve.slope(0.0)"
+            },
+            "coefficients": {
+                "rho[][]": {
+                    "secant": "r * I",
+                    "tangent": "r * I + (j > 1e-100 ? (curve.slope(j) - r) / (j * j) : 0.0) * outer_product(Jt, Jt)"
+                }
+            }
+        },
+        "power_law_b": {
+            "element_types": [
+                "TPHI3D_edge",
+                "TPHI2D_edge"
+            ],
+            "source": "mat",
+            "input": "Jt",
+            "inputs": [
+                "H"
+            ],
+            "curve": {
+                "x": "J",
+                "y": "E"
+            },
+            "curves": {
+                "jc": {
+                    "x": "Bjc",
+                    "y": "jc"
+                }
+            },
+            "expressions": {
+                "j": "Jt.norm()",
+                "s": "jc.value(mu0 * H.norm())",
+                "u": "j / s",
+                "r": "j > 1e-100 ? curve.value(u) / j : curve.slope(0.0) / s"
+            },
+            "coefficients": {
+                "rho[][]": {
+                    "secant": "r * I",
+                    "tangent": "r * I + (j > 1e-100 ? (curve.slope(u) / s - r) / (j * j) : 0.0) * outer_product(Jt, Jt)"
+                }
             }
         }
     }

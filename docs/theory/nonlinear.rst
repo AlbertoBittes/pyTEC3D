@@ -5,7 +5,7 @@ Nonlinear materials and Newton-Raphson
 
 With a saturating material (the law ``bh_curve``, :doc:`constitutive`) the reluctivity depends on the solution and
 each time step is a nonlinear problem, solved with Newton's method. This page gives the residual and the Jacobian of
-the A-V formulations in block form; the conduction and circuit terms stay linear.
+the A, V-A formulations in block form; the conduction and circuit terms stay linear.
 
 Residual
 ~~~~~~~~
@@ -93,6 +93,40 @@ gives a secant :math:`S(\mathbf{x})` and, optionally, a tangent :math:`\mathbf{T
 with :math:`c_0=1`, :math:`c_1=c_v`, :math:`c_2=c_a`. When the law coefficient multiplies a trial that is not its own
 input (a field-dependent conductivity on :math:`\partial_t\mathbf{A}`, the gauge term), the Jacobian uses the secant
 only: Newton still converges to the solution, more slowly.
+
+**A law output under a time derivative.** When the trial is the time derivative of the law's own input (T-phi in a
+conducting iron: :math:`\int\mathbf{t}\cdot\partial_t\mathbf{B}(\mathbf{H})`, :math:`\mathbf{H}` linear in the DOFs), the
+term is the rate of the law output, not the secant times the rate of the input:
+:math:`\partial_t(\mu(H)H)=(\mu+H\,d\mu/dH)\,\partial_tH`, and over a step
+:math:`\int_{H_n}^{H_{n+1}}\mu_d\,dH=B(H_{n+1})-B(H_n)`. With fixed test functions the term is the time derivative of
+the element vector :math:`\mathbf{q}(\mathbf{u})=\int\mathcal{T}(\boldsymbol\phi)^T S(\mathbf{x})\,\mathbf{x}`, and the time
+scheme treats :math:`\mathbf{q}` as it treats the DOFs:
+
+.. math::
+
+   \dot{\mathbf{q}}_{n+1} = c_v\,\mathbf{q}(\mathbf{u}) + h^u_v\,\mathbf{q}(\mathbf{u}_n) + h^v_v\,\dot{\mathbf{q}}_n
+   + h^a_v\,\ddot{\mathbf{q}}_n,
+   \qquad \mathbf{J} \mathrel{+}= c_v\int\mathcal{T}(\boldsymbol\phi)^T\mathbf{T}(\mathbf{x})\,\mathcal{L},
+
+(:math:`\ddot{\mathbf{q}}` likewise with the coefficients of the acceleration; for :math:`\partial_t^2` the roles of
+the two swap). :math:`\mathbf{q}(\mathbf{u}_n)` is evaluated again from the DOFs of the previous step; the rates
+:math:`\dot{\mathbf{q}}_n, \ddot{\mathbf{q}}_n` are stored per element after each solve (zero on a static step), like the
+DOF rates. Any theta (backward Euler: :math:`(B(H_{n+1})-B(H_n))/\Delta t`) and Newmark. The secant or the tangent
+times the rate of the input instead is wrong (the secant overestimates the flux change in saturation) or not
+solvable (the tangent at the end of the step makes the step equation non-monotone).
+
+**Laws with more inputs.** A law may read further fields at the quadrature point (``"inputs"`` in
+``nonlinear_laws.json``, values only) and further named curves (``"curves"``): ``power_law_b``,
+:math:`\rho(\mathbf{J},\mathbf{B})` with :math:`E=E_0(J/s(|B|))`. The Jacobian holds the tangent with respect to the
+law's own input at fixed extra inputs: the blocks :math:`\partial\rho/\partial\mathbf{B}\cdot\mathbf{J}` (the rows of
+:math:`\mathbf{T}` on the columns of :math:`\mathbf{T}` and :math:`\phi` through :math:`\mathbf{B}`) are missing. The
+residual is exact, so Newton converges to the solution, linearly where those blocks matter.
+
+**Power laws.** For a superconductor, :math:`E=E_c(J/J_c)^n` with n = 20-100 replaces the resistivity by its secant
+:math:`\rho_s=E(J)/J` and the tangent :math:`dE/dJ` along :math:`\mathbf{J}`. The secant spans tens of orders of magnitude
+between :math:`J\ll J_c` and :math:`J>J_c`, so the first residual of a step is dominated by the starting guess: the
+residual tolerance must be absolute, scaled to the problem, and the curve must end with a normal-state segment so that
+an overshooting iterate keeps a bounded tangent (user manual, *Superconductors: the nonlinear settings*).
 
 Convergence in practice
 ~~~~~~~~~~~~~~~~~~~~~~~

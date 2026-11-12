@@ -32,14 +32,14 @@ namespace
     constexpr double kHalfConductor = 0.2; ///< The conductor is [-0.2, 0.2] x [-0.2, 0.2] m.
     constexpr double kCurrentDensity = 1e6; ///< A/m^2, along z.
 
-    /** @brief The model data: two element types (air, conductor) of AV2D_nodal, one material, one constants row. */
+    /** @brief The model data: two element types (air, conductor) of AVA2D_nodal, one material, one constants row. */
     nlohmann::json model_data()
     {
         const nlohmann::json identity = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
         return {
             {"element_types",
-             {{"1", {{"element_type", "AV2D_nodal"}, {"option1", "NON_CONDUCTING"}, {"option2", 1}, {"option3", 0}}},
-              {"2", {{"element_type", "AV2D_nodal"}, {"option1", "STRANDED_CONDUCTOR"}, {"option2", 1}, {"option3", 0}}}}},
+             {{"1", {{"element_type", "AVA2D_nodal"}, {"option1", "NON_CONDUCTING"}, {"option2", 1}, {"option3", 0}}},
+              {"2", {{"element_type", "AVA2D_nodal"}, {"option1", "STRANDED_CONDUCTOR"}, {"option2", 1}, {"option3", 0}}}}},
             {"materials", {{"1", {{"mur", identity}}}}},
             {"constants", {{"1", {{"thickness", 1.0}}}}},
             {"dof_couplings", nlohmann::json::object()},
@@ -96,7 +96,7 @@ int main(int argc, char **argv)
             }
         }
 
-    // --- The fields of the element type AV2D_nodal (pytec3d::required_field_arrays(); the solver checks they are all
+    // --- The fields of the element type AVA2D_nodal (pytec3d::required_field_arrays(); the solver checks they are all
     //     given): DOF fields F with their Dirichlet values _F (NaN: free), nodal loads, nodal and element fields. Only
     //     A, its boundary values and Js matter in this model; V, VOLT, EMF belong to the conductor domains not used.
     std::map<std::string, std::vector<double>> point_storage, cell_storage;

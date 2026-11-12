@@ -14,10 +14,10 @@
 #
 # Model data (model_data.json)
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: AV2D_nodal / NON_CONDUCTING  / 2 / 1   air
-#   * 23: AV2D_nodal / STRANDED_COIL   / 2 / 1   coil: A_z + VOLT + EMF
-#   * 26: AV2D_nodal / HARD_MAGNETIC   / 2 / 1   iron (M = 0 by default: soft iron), B-H curve below
-#   * 24: AV2D_nodal / SOLID_CONDUCTOR / 2 / 1   passive ring (eddy currents only)
+#   * 21: AVA2D_nodal / NON_CONDUCTING  / 2 / 1   air
+#   * 23: AVA2D_nodal / STRANDED_COIL   / 2 / 1   coil: A_z + VOLT + EMF
+#   * 26: AVA2D_nodal / HARD_MAGNETIC   / 2 / 1   iron (M = 0 by default: soft iron), B-H curve below
+#   * 24: AVA2D_nodal / SOLID_CONDUCTOR / 2 / 1   passive ring (eddy currents only)
 #   Materials: 21 air; 23 coil (mur = 1); 26 iron (mur = 1, replaced by the curve); 24 rho = 1e-8 Ohm m.
 #   Real constants 1: thickness = 1, cross_section = 0.04 m^2, turns = 1000, radius = 0.5 m, resistance = 50 Ohm,
 #     symmetry = 1, T = (0, 0, 1).

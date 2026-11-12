@@ -108,7 +108,17 @@ public:
 
     /** @brief Builds the tangent matrix and residual of the law terms at the current solution; @p scheme gives the
      * velocity and acceleration of the law terms with dt() and the scaling of their Jacobian. */
-    void build_element_tangent_stiffness_residual(const TimeScheme &scheme);
+    /** @p picard: the Jacobian of the laws with their secant (Picard iteration), not their tangent. */
+    void build_element_tangent_stiffness_residual(const TimeScheme &scheme, bool picard = false);
+
+    /** @brief True when the element has law outputs under dt() (ElementType::rate_residuals and a law selected). */
+    bool rate_residual_element() const;
+
+    /** @brief The outputs q(x) of the element's law terms with @p order dt() on the trial (1 or 2), the laws evaluated
+     * at @p solution: the quantity whose rates the time scheme gives (q' = c_v q(u) + hu_v q(u_n) + hv_v q'_n + ha_v
+     * q''_n, as for the DOFs). Zero on other elements. */
+    libMesh::DenseVector<libMesh::Number> law_output(const libMesh::NumericVector<libMesh::Number> &solution,
+                                                     unsigned int order);
 
     /** @brief Nodal fields of the active element from the current solution (stored operators, read by the nodal system,
      * plus the dynamic fields), written to the nodal system. */

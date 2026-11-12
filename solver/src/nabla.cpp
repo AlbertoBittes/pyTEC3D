@@ -127,11 +127,14 @@ namespace pytec3d
             }
             case Operator::Curl:
             {
+                // 2D: libMesh gives the out-of-plane component (z). Axisymmetric, with (x, y) = (r, z) and component 2
+                // the theta one: curl(V_r, V_z) . e_theta = dV_r/dz - dV_z/dr, minus libMesh's.
                 const auto &curl_phi = fe.get_curl_phi();
+                const Real sign = axisymmetric ? -1.0 : 1.0;
                 auto &table = shaped<RealVectorValue>(out, spec.output, nq, n);
                 for (unsigned int qp = 0; qp < nq; ++qp)
                     for (std::size_t i = 0; i < n; ++i)
-                        table[qp][i] = curl_phi[i][qp];
+                        table[qp][i] = sign * curl_phi[i][qp];
                 return;
             }
             case Operator::Div:

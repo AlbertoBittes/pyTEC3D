@@ -16,7 +16,8 @@
  *   scalar  curl      Vector  curl(phi e_z) of a 2D element: (dphi/dy, -dphi/dx); axisymmetric, with (x, y) = (r, z),
  *                             curl(phi e_theta) = (-dphi/dz, dphi/dr + phi / r)
  *   vector  identity  Vector  phi
- *   vector  curl      Vector  curl_phi (3D)
+ *   vector  curl      Vector  curl_phi (3D); 2D: its out-of-plane component (z), axisymmetric the theta one,
+ *                             dV_r/dz - dV_z/dr (minus libMesh's)
  *   vector  div       Real    div_phi; axisymmetric adds phi_r / r
  *   vector  grad      Tensor  dphi (not axisymmetric)
  *

@@ -447,7 +447,7 @@ Summary of the coupled model
    * - Evolution
      - Implicit coupling: Picard iterations repeat the transient solve of the step until the flux converges.
    * - Structures
-     - 2D or 3D eddy currents (A-V formulation), any material, cyclic symmetry in 3D.
+     - 2D or 3D eddy currents (A, V-A formulation), any material, cyclic symmetry in 3D.
    * - Coils
      - Fixed currents (stranded conductors) or voltage-driven multi-turn coils (stranded coils, A-VOLT-EMF).
    * - Halo

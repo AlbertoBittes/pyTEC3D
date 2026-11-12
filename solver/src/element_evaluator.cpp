@@ -117,6 +117,7 @@ namespace pytec3d
         struct LawState
         {
             const CurveData *curve = nullptr; ///< Of the model data row selecting the law, if the law has a curve.
+            std::array<const CurveData *, 2> curves{}; ///< Its named curves, of the same row.
             bool done = false;
             std::vector<std::vector<ParameterValue>> outputs; ///< [output][qp].
         };
@@ -163,15 +164,25 @@ namespace pytec3d
                 {
                     const registry::LawId id = spec.laws[l].id;
                     const registry::LawInfo &info = registry::info(id);
-                    if (!(in_.laws & registry::bit(id)) || info.curve == registry::CurveId::COUNT)
+                    if (!(in_.laws & registry::bit(id)))
                         continue;
                     const unsigned int row = info.source == registry::LawSource::Material   ? in_.material_id
                                              : info.source == registry::LawSource::Constant ? in_.constants_id
                                                                                             : in_.type_id;
-                    laws_[l].curve = in_.model_data ? in_.model_data->curve(info.curve, row) : nullptr;
-                    if (!laws_[l].curve)
-                        fail("law '" + std::string(registry::name(id)) + "' of id " + std::to_string(row) +
-                             " has no curve in the model data.");
+                    const auto read = [&](registry::CurveId curve) -> const CurveData *
+                    {
+                        const CurveData *data = in_.model_data ? in_.model_data->curve(curve, row) : nullptr;
+                        if (!data)
+                            fail("law '" + std::string(registry::name(id)) + "' of id " + std::to_string(row) +
+                                 " has no curve '" + std::string(registry::kCurveSources[static_cast<std::size_t>(curve)].y) +
+                                 "' in the model data.");
+                        return data;
+                    };
+                    if (info.curve != registry::CurveId::COUNT)
+                        laws_[l].curve = read(info.curve);
+                    for (std::size_t k = 0; k < info.curves.size(); ++k)
+                        if (info.curves[k] != registry::CurveId::COUNT)
+                            laws_[l].curves[k] = read(info.curves[k]);
                 }
             }
 
@@ -239,6 +250,13 @@ namespace pytec3d
                         if (scale != 0.0)
                             scatter(kernel<term.kernel>().matrix, term, J, scale);
                     }
+                    else if constexpr (term.stage == Stage::RateResidual)
+                    {
+                        // c_d block(u) u: the law output at the end of the step (its history: ElementBuilder, the system).
+                        const Real scale = in_.jacobian_scale[term.trial_dt];
+                        if (scale != 0.0)
+                            add_block_product<decltype(term_index)::value>(R, scale);
+                    }
                     else
                     {
                         // The residual of the term at the current solution (its rates for a dt() trial).
@@ -254,6 +272,19 @@ namespace pytec3d
                                 sum += m(i, j) * u(j);
                             R(rows[i]) += sum;
                         }
+                    } });
+            }
+
+            void add_law_output(Vector &R, const std::array<Real, 3> &scale) override
+            {
+                for_terms(Operation::Nonlinear, [&](auto term_index)
+                          {
+                    constexpr formulation::TermSpec term = spec.terms[term_index];
+                    if constexpr (term.stage == Stage::RateResidual)
+                    {
+                        const Real s = scale[term.trial_dt];
+                        if (s != 0.0)
+                            add_block_product<decltype(term_index)::value>(R, s);
                     } });
             }
 
@@ -338,6 +369,25 @@ namespace pytec3d
                     target(rows[i]) += sign * v(i);
             }
 
+            /** @brief R += scale * block * u, u the trial's field in the solution itself (not its rate). */
+            template <std::size_t T>
+            void add_block_product(Vector &R, Real scale)
+            {
+                constexpr formulation::TermSpec term = spec.terms[T];
+                const Matrix &m = kernel<term.kernel>().matrix;
+                if (!in_.solution || !in_.dofs)
+                    fail("a term needs the solution, which was not given.");
+                const auto &columns = in_.dofs->field[static_cast<std::size_t>(term.trial_field)];
+                const auto &rows = in_.dofs->field[static_cast<std::size_t>(term.test_field)];
+                for (unsigned int i = 0; i < m.m(); ++i)
+                {
+                    Real sum = 0.0;
+                    for (unsigned int j = 0; j < m.n(); ++j)
+                        sum += m(i, j) * (*in_.solution)(columns[j]);
+                    R(rows[i]) += scale * sum;
+                }
+            }
+
             Vector trial_solution(const formulation::TermSpec &term) const
             {
                 const Vector *solution = term.trial_dt == 0 ? in_.solution : term.trial_dt == 1 ? in_.solution_dt : in_.solution_ddt;
@@ -382,11 +432,16 @@ namespace pytec3d
                     out.values.push_back(c.sign * in_.parameters->symbol(static_cast<registry::ParameterId>(c.index)).template get<C>());
                     break;
                 case CoefficientKind::LawOutput:
-                    // Only in the law variants, used where the law is selected.
+                {
+                    // Only in the law variants, used where the law is selected. Picard: the secant for the tangent.
                     out.per_qp = true;
-                    for (const ParameterValue &value : law_output(static_cast<registry::LawOutputId>(c.index)))
+                    auto id = static_cast<registry::LawOutputId>(c.index);
+                    if (in_.picard)
+                        id = registry::info(id).secant;
+                    for (const ParameterValue &value : law_output(id))
                         out.values.push_back(c.sign * value.template get<C>());
                     break;
+                }
                 }
                 return out;
             }
@@ -399,11 +454,20 @@ namespace pytec3d
                 if (!state.done)
                 {
                     const std::vector<ParameterValue> input = point_values(static_cast<std::size_t>(law.input));
+                    std::array<std::vector<ParameterValue>, 2> extra;
+                    for (std::size_t k = 0; k < extra.size(); ++k)
+                        if (law.inputs[k] >= 0)
+                            extra[k] = point_values(static_cast<std::size_t>(law.inputs[k]));
                     state.outputs.assign(law.outputs.size(), std::vector<ParameterValue>(nq_));
                     std::vector<ParameterValue> point(law.outputs.size());
+                    std::array<ParameterValue, 2> inputs;
                     for (std::size_t qp = 0; qp < nq_; ++qp)
                     {
-                        formulation::evaluate_law(Id, law.id, input[qp], state.curve, *in_.parameters, point.data());
+                        for (std::size_t k = 0; k < extra.size(); ++k)
+                            if (!extra[k].empty())
+                                inputs[k] = extra[k][qp];
+                        formulation::evaluate_law(Id, law.id, input[qp], inputs.data(), state.curve, state.curves.data(),
+                                                  *in_.parameters, point.data());
                         for (std::size_t o = 0; o < point.size(); ++o)
                             state.outputs[o][qp] = point[o];
                     }
@@ -778,6 +842,11 @@ namespace pytec3d
     void ElementEvaluator::add_rhs(Vector &F)
     {
         impl_->add_rhs(F);
+    }
+
+    void ElementEvaluator::add_law_output(Vector &R, const std::array<libMesh::Real, 3> &scale)
+    {
+        impl_->add_law_output(R, scale);
     }
 
     void ElementEvaluator::add_nonlinear(Matrix &J, Vector &R)

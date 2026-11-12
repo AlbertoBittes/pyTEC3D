@@ -44,12 +44,12 @@ Overview
      - Element type
      - What it shows
    * - :doc:`coils_2d`: ``coil_2D_avolt``, ``coil_2D_avoltemf``, ``coil_2D_avoltemf_ferr``, ``coil_2D_avolt_timint``
-     - ``AV2D_nodal``, ``AV2D_nodal_timint``
+     - ``AVA2D_nodal``, ``AVA2D_nodal_timint``
      - Axisymmetric coils and rings: circuit-coupled conductor, stranded coil with its circuit equation, saturating
        iron, time-integrated potential; current- and voltage-driven steps.
    * - :doc:`coils_3d`: ``coil_3D_avoltemf``, ``coil_3D_avoltemf_edge``, ``coil_3D_avoltemf_edge_ferr``,
        ``coil_3D_avoltemf_timint``
-     - ``AV3D_nodal``, ``AV3D_edge``, ``AV3D_nodal_timint``
+     - ``AVA3D_nodal``, ``AVA3D_edge``, ``AVA3D_nodal_timint``
      - The same rings on a 30 degree cyclic sector: coordinate systems, cyclic symmetry of nodal and edge fields, tree
        gauge, iron with edge elements, time-integrated unknowns.
    * - :doc:`iter`: ``ITER_2D_carma``, ``ITER_2D_fine2``, ``ITER_2D_evol_carma``, ``ITER_2D_evol_fine2``,
@@ -57,6 +57,12 @@ Overview
      - all
      - Plasma equilibria and vertical displacement of ITER with the plasma algorithm: linear and quadratic meshes, 3D
        sectors with nodal and edge elements, halo currents, voltage-driven coils.
+   * - :doc:`formulations`: ``core_3D_phi``, ``ring_3D_tphi``, ``coil_core_3D_tphi``, ``wire_2D_tphi``,
+       ``bulk_2D_tphi_axisym``
+     - ``PHI3D_nodal``, ``TPHI3D_edge``, ``TPHI2D_edge``
+     - The scalar potentials: magnetostatics with the source field in the system (iron loop, B-H curve), T-phi eddy
+       currents with cuts and fixed-T coils, superconductors with power laws (AC transport loss, a field-cooled bulk
+       with Jc(B)), 3D, 2D and axisymmetric.
 
 .. toctree::
    :maxdepth: 2
@@ -64,3 +70,4 @@ Overview
    coils_2d
    coils_3d
    iter
+   formulations

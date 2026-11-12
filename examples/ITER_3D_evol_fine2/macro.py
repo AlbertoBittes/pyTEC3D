@@ -13,7 +13,7 @@
 #
 # Model data (model_data.json)
 #   Element types (option2 = 1, option3 = 0): 21 NON_CONDUCTING, 23 STRANDED_CONDUCTOR, 24 SOLID_CONDUCTOR,
-#   all AV3D_nodal_timint (element_type 4).
+#   all AVA3D_nodal_timint (element_type 4).
 #   Materials: mur = 1; rho = 8e-7 Ohm m for the vacuum vessel and structures (MATERIAL 24).
 #   Real constants: one row per coil and rows for the other regions (as in the 2D models).
 #

@@ -47,6 +47,8 @@ struct NewtonSettings
     bool require_residual_reduction = false;
     bool require_finite_residual = true;
     bool brent_line_search = true;
+    /// Picard iteration: the Jacobian of the laws is their secant (the tangent part is dropped), u+ = K_s(u)^-1 f.
+    bool picard = false;
     double minimum_step_length = 1e-5;
     double linear_tolerance_multiplier = 1e-3;
     bool continue_after_max_iterations = true;

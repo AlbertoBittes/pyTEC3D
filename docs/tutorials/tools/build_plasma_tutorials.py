@@ -875,10 +875,10 @@ def iter_3d_halo():
 This notebook follows `examples/ITER_3D_evol_coils_edge`: the vertical displacement event of the 2D tutorial, now with the
 field solved on a **3D** model of the machine and three new physical effects:
 
-* **3D solid conductors**: the vessel and the passive structures are `SOLID_CONDUCTOR` cells of the 3D nodal A-V
-  formulation (`AV3D_edge`, edge elements for $A$, nodal $V$), with the electric potential $V$ (charge conservation). Besides the toroidal eddy
+* **3D solid conductors**: the vessel and the passive structures are `SOLID_CONDUCTOR` cells of the 3D nodal A, V-A
+  formulation (`AVA3D_edge`, edge elements for $A$, nodal $V$), with the electric potential $V$ (charge conservation). Besides the toroidal eddy
   currents they can carry **poloidal** currents, which the 2D model cannot represent. Here the vector potential uses
-  **edge** (Nedelec) elements (`AV3D_edge`): its DOFs are circulations along the mesh edges, and a tree-cotree gauge
+  **edge** (Nedelec) elements (`AVA3D_edge`): its DOFs are circulations along the mesh edges, and a tree-cotree gauge
   fixes it;
 * **halo currents**: when the plasma is limited, a thin layer of open field lines outside the last closed flux
   surface (the halo) carries part of the plasma current; its poloidal current flows *into the wall* and back,
@@ -927,7 +927,7 @@ equilibrium = meshes.read_mesh(str(eq_file), reset_arrays=False)
 vertical (y) axis, with four cells along the torus (five node stations, every 0.5 degree, and the midside nodes in
 between), inside a 100 m sphere of air. The angle is measured
 from the x axis towards -z. Cells: HEX20, with WEDGE15 on the axis: a quadratic mesh, because the edge DOFs of
-`AV3D_edge` live on its midside nodes.
+`AVA3D_edge` live on its midside nodes.
 """)
     nb.code('''
 solver = Solver(log_file="ITER_3D_evol_coils_edge.log")
@@ -948,7 +948,7 @@ print("node stations [deg]:", np.unique(np.round(angles[np.hypot(grid.points[:, 
 data = json.load(open("model_data.json"))
 domains = dict(enumerate(element_library.domains()))
 for tid, row in data["element_types"].items():
-    print(f"TYPE {tid}: AV3D_edge {domains[row['option1']]:26s} {np.sum(grid.cell_data['TYPE'] == int(tid)):6d} cells")
+    print(f"TYPE {tid}: AVA3D_edge {domains[row['option1']]:26s} {np.sum(grid.cell_data['TYPE'] == int(tid)):6d} cells")
 ''')
     nb.code('''
 machine = grid.threshold(value=(32.5, 35.5), scalars="TYPE")         # all but the air
@@ -1302,7 +1302,7 @@ plt.show()
 
 A zoom on the contact region at the last step, with the **poloidal** current density in the structures (the R and Z
 components of `Jt`, colour and arrows). The halo current enters the wall above the contact point (red) and leaves it
-below (blue), flowing along the vessel shell in between: a current path that only the 3D A-V model, with the
+below (blue), flowing along the vessel shell in between: a current path that only the 3D A, V-A model, with the
 potential $V$, can carry. Here it is small against the poloidal currents induced by the change of toroidal flux: 13 -
 28 kA spread over a wall section of about 1.5 m$^2$ (the shell thickness times $2\\pi R$) is some 0.02 MA/m$^2$,
 against 0.1 MA/m$^2$ of induced current.

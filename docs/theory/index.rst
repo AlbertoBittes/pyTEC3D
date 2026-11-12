@@ -12,23 +12,22 @@ domain that implement it.
 * :doc:`domains`: the seven domains of pyTEC3D (``NON_CONDUCTING`` ... ``STRANDED_COIL``), their electric and magnetic
   character and the unknowns each one has in 2D and 3D.
 * :doc:`notation`: the symbols, with the names of the corresponding fields, parameters and arrays of the code.
-* :doc:`maxwell`: the magneto-quasi-static (eddy-current) approximation, the A-V potentials, the gauge and the
+* :doc:`maxwell`: the magneto-quasi-static (eddy-current) approximation, the A, V-A potentials, the gauge and the
   boundary conditions.
 * :doc:`constitutive`: reluctivity, conductivity, magnetization and the B-H law, in the element coordinate system of
   a cell.
 
 **Formulations.**
 
-* :doc:`formulation_2d`: ``AV2D_nodal``, planar and axisymmetric: the out-of-plane vector potential, the out-of-plane
+* :doc:`formulation_2d`: ``AVA2D_nodal``, planar and axisymmetric: the out-of-plane vector potential, the out-of-plane
   voltage of a conductor with a terminal, the element matrices of each domain.
-* :doc:`formulation_3d`: ``AV3D_nodal`` (Lagrange vector potential with a Coulomb gauge term) and ``AV3D_edge``
+* :doc:`formulation_3d`: ``AVA3D_nodal`` (Lagrange vector potential with a Coulomb gauge term) and ``AVA3D_edge``
   (Nedelec elements with a tree-cotree gauge).
 * :doc:`circuits`: the domains driven through terminals: stranded coils and their circuit equation, conductors with
   a terminal in 2D, injected currents in 3D, and the time-integrated variants (``_timint``).
 * :doc:`nonlinear`: saturating materials: residual, Jacobian and Newton-Raphson iteration in block form.
-* :doc:`formulations_potentials`: the scalar potential (``PHI3D_nodal``, ``PHI2D_nodal``), the vector potential alone
-  in the conductors (``A3D_edge``), T-A (``TA3D_edge``) and H-phi (``HPHI3D_edge``), and source currents as a current
-  vector potential (``T0``).
+* :doc:`formulations_potentials`: the magnetic scalar potential: magnetostatics with the source field solved in the
+  same system (``PHI3D_nodal``), and the T-phi formulation (T-Omega, H-phi) for eddy currents (``TPHI3D_edge``).
 
 **The code.** :doc:`implementation`: how the kernels of the element types become the element matrices, the time
 scheme, the constraints (Dirichlet values, nodal frames, couplings) and the output fields.

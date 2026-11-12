@@ -6,6 +6,7 @@
         "STRANDED_CONDUCTOR",
         "CIRCUIT_COUPLED_CONDUCTOR",
         "SOLID_CONDUCTOR",
-        "STRANDED_COIL"
+        "STRANDED_COIL",
+        "CUT_LAYER"
     ]
 }

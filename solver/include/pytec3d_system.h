@@ -9,11 +9,13 @@
  */
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include <libmesh/dense_vector.h>
 #include <libmesh/explicit_system.h>
 #include <libmesh/linear_implicit_system.h>
 #include <libmesh/linear_solver.h>
@@ -149,7 +151,22 @@ public:
     void delete_rows_cols_constrained_dofs() override;
     ReducedPetscLinearSolver &reduced_linear_solver() override;
 
+    /** @brief As pyTEC3DDOFSystem, and the law-output rates of the new step become the old ones. */
+    void init_time_step(const TimeStepInput &time_step) override;
+    /** @brief As pyTEC3DDOFSystem, and the rates of the law outputs under dt() (law_rates_). */
+    void update_time_derivatives() override;
+
 private:
+    /** @brief The first and second time derivatives of the law outputs under dt() of one element (q' and q'' of
+     * ElementBuilder::law_output), for the terms with 1 and 2 dt() (index 0 and 1): the history of the time scheme. */
+    struct LawRates
+    {
+        std::array<libMesh::DenseVector<libMesh::Number>, 2> v; ///< q'
+        std::array<libMesh::DenseVector<libMesh::Number>, 2> a; ///< q''
+    };
+    std::unordered_map<libMesh::dof_id_type, LawRates> law_rates_;     ///< At the end of the step, by element id.
+    std::unordered_map<libMesh::dof_id_type, LawRates> old_law_rates_; ///< At the start of the step.
+
     /** @brief Newton callbacks of libMesh: assemble the Jacobian and / or the residual at the current solution. */
     static void matvec_callback(const libMesh::NumericVector<libMesh::Number> &X,
                                 libMesh::NumericVector<libMesh::Number> *R,

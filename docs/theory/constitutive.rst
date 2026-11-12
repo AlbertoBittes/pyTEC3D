@@ -30,8 +30,15 @@ with :math:`\mu_r` the relative permeability tensor (``mat.mur``, 3x3) and :math
 * **Permanent magnets.** For a magnet with remanence :math:`B_r` and recoil permeability :math:`\mu_\text{rec}` along
   its easy axis :math:`\mathbf{e}`, :math:`\mu_r=\mu_\text{rec}` and :math:`\mathbf{M}=B_r/(\mu_0\mu_\text{rec})\,
   \mathbf{e}`, i.e. the coercive field. The easy axis is conveniently given in an element coordinate system.
-* **Output.** The field ``H`` of the output is :math:`\nu\,\mathbf{B}`: in a magnetized cell :math:`\mathbf{M}` is
-  not subtracted.
+* **Output.** The field ``H`` of the output is :math:`\nu\mathbf{B}-\mathbf{M}`, the physical field also in a
+  magnet.
+* **Magnets with a B-H curve.** The permanent magnetization is a constant in both formulations, never scaled by a
+  field-dependent permeability (so it has no rate in Faraday's law) [Kuczmann2009]_. Linear, both are
+  :math:`\mathbf{B}=\mu_0\mu_r(\mathbf{H}+\mathbf{M})`. With a curve they differ: A, V-A (law on B)
+  :math:`\mathbf{H}=\mathbf{H}_\text{curve}(\mathbf{B})-\mathbf{M}` (a constant coercive shift); T-phi (law on H)
+  :math:`\mathbf{B}=\mathbf{B}_\text{curve}(\mathbf{H})+\mathbf{B}_r`, :math:`\mathbf{B}_r=\mu_0\mu_r\mathbf{M}` (a
+  constant remanence; ``mur`` of the magnet only converts ``M``). Benchmark: ``magnet_bh`` (T-phi within 3 % of the
+  exact field of a ball).
 
 Conductivity
 ~~~~~~~~~~~~

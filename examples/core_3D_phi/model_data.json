@@ -1,0 +1,78 @@
+{
+  "element_types": {
+    "1": {
+      "element_type": "PHI3D_nodal",
+      "option1": "NON_CONDUCTING",
+      "option2": 1
+    },
+    "2": {
+      "element_type": "PHI3D_nodal",
+      "option1": "SOFT_MAGNETIC",
+      "option2": 1
+    },
+    "3": {
+      "element_type": "PHI3D_nodal",
+      "option1": "STRANDED_CONDUCTOR",
+      "option2": 1
+    }
+  },
+  "materials": {
+    "1": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    "2": {
+      "mur": [
+        [
+          1000.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1000.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1000.0
+        ]
+      ]
+    },
+    "3": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    }
+  }
+}

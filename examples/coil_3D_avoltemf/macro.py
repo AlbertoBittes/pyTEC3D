@@ -30,9 +30,9 @@
 # Model data (model_data.json)
 # ----------------------------
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: 1 = AV3D_nodal / NON_CONDUCTING            / 1 / 0   air: nodal A (3 components) + Coulomb gauge term
-#   * 23: 1 = AV3D_nodal / STRANDED_COIL             / 1 / 0   coil: A + VOLT + EMF
-#   * 24: 1 = AV3D_nodal / SOLID_CONDUCTOR           / 1 / 0   passive ring: A + V
+#   * 21: 1 = AVA3D_nodal / NON_CONDUCTING            / 1 / 0   air: nodal A (3 components) + Coulomb gauge term
+#   * 23: 1 = AVA3D_nodal / STRANDED_COIL             / 1 / 0   coil: A + VOLT + EMF
+#   * 24: 1 = AVA3D_nodal / SOLID_CONDUCTOR           / 1 / 0   passive ring: A + V
 #   Materials: 21 air (mur = 1); 23 coil (mur = 1, rho unused); 24 mur = 1, rho = 2e-8 Ohm m.
 #   Real constants 1 (all cells; read by the coil):
 #     cross_section S = 0.04 m^2, turns N = 2000, resistance R = 20 Ohm, volume = 0.12566 m^3 (volume of the WHOLE
@@ -56,7 +56,7 @@
 # Results: output/coil_3D_avoltemf_out_<n>.vtu (A, V, VOLT, EMF, B, H, Jt), coil_3D_avoltemf_steps.csv, .log
 #
 # How to run:  cd examples/coil_3D_avoltemf && python macro.py
-# Documentation: "Element library" (AV3D_nodal), "User manual - boundary conditions, DOF couplings, coordinate
+# Documentation: "Element library" (AVA3D_nodal), "User manual - boundary conditions, DOF couplings, coordinate
 # systems", "Theory - stranded coils".
 # =====================================================================================================================
 

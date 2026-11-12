@@ -9,7 +9,7 @@ next to the mesh and read with ``model.read_json()``; in Python it is the dict `
 .. code-block:: json
 
    {
-     "element_types":      {"21": {"element_type": "AV2D_nodal", "option1": "NON_CONDUCTING", "option2": 2, "option3": 1},
+     "element_types":      {"21": {"element_type": "AVA2D_nodal", "option1": "NON_CONDUCTING", "option2": 2, "option3": 1},
                             "23": {"element_type": 0, "option1": 4, "option2": 2, "option3": 1}},
      "materials":          {"21": {"mur": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]},
                             "23": {"mur": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "rho": [[1e-7, 0, 0], [0, 1e-7, 0], [0, 0, 1e-7]]}},
@@ -48,16 +48,16 @@ element_types
    * - ``element_type``
      - The formulation: a name of the :doc:`element_library`, or its index (required).
 
-       ===== ===================== ====================================================================
-       Index Name                  Formulation
-       ===== ===================== ====================================================================
-       0     ``AV2D_nodal``        2D planar / axisymmetric, A_z (+ V, VOLT, EMF)
-       1     ``AV3D_nodal``        3D, nodal A + V (+ VOLT, EMF), Coulomb gauge term
-       2     ``AV3D_edge``         3D, edge (Nedelec) A + nodal V (+ VOLT, EMF)
-       3     ``AV2D_nodal_timint`` as 0, with time-integrated electric unknowns
-       4     ``AV3D_nodal_timint`` as 1, with time-integrated electric unknowns
-       5     ``AV3D_edge_timint``  as 2, with time-integrated electric unknowns
-       ===== ===================== ====================================================================
+       ===== ====================== ====================================================================
+       Index Name                   Formulation
+       ===== ====================== ====================================================================
+       0     ``AVA2D_nodal``        2D planar / axisymmetric, A_z (+ V, VOLT, EMF)
+       1     ``AVA3D_nodal``        3D, nodal A + V (+ VOLT, EMF), Coulomb gauge term
+       2     ``AVA3D_edge``         3D, edge (Nedelec) A + nodal V (+ VOLT, EMF)
+       3     ``AVA2D_nodal_timint`` as 0, with time-integrated electric unknowns
+       4     ``AVA3D_nodal_timint`` as 1, with time-integrated electric unknowns
+       5     ``AVA3D_edge_timint``  as 2, with time-integrated electric unknowns
+       ===== ====================== ====================================================================
    * - ``option1``
      - The **domain** (physical region): a name or its index (required).
 

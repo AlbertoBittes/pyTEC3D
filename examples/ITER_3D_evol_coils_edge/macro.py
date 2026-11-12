@@ -14,7 +14,7 @@
 # Geometry and mesh: ITER_3D_evol_coils_edge.vtu, the quadratic ITER_2D_carma mesh revolved over 2 degrees in 4 cells
 #   (68404 HEX20 + 400 WEDGE15 on the axis, 463974 nodes), written by make_mesh.py (python make_mesh.py --sector 2
 #   --divisions 4 rebuilds it, and updates the coil volumes of model_data.json).
-# Model data (model_data.json): AV3D_edge: 31 NON_CONDUCTING, 33 STRANDED_CONDUCTOR (plasma region), 34
+# Model data (model_data.json): AVA3D_edge: 31 NON_CONDUCTING, 33 STRANDED_CONDUCTOR (plasma region), 34
 #   SOLID_CONDUCTOR (vessel and structures), 35 STRANDED_COIL (coils: A + VOLT + EMF). Coil real constants:
 #   volume = volume of the WHOLE coil, symmetry = 180 (360 / 2 degrees), T = (0, 1, 0) in the cylindrical element
 #   system 1 (toroidal). DOF couplings 1-6 (PF) and 11-16 (CS) -> ["VOLT", "EMF"],

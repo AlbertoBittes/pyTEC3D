@@ -26,7 +26,7 @@
 #   PFC_1 ... PFC_6 (poloidal field coils), COILS, PLASMA_REGION (where the plasma can be), PASSIVE_STRUCTURES.
 #
 # Model data (model_data.json)
-#   Element types (AV2D_nodal, option2 = 2, option3 = 1 axisymmetric): 21 NON_CONDUCTING, 23 STRANDED_CONDUCTOR
+#   Element types (AVA2D_nodal, option2 = 2, option3 = 1 axisymmetric): 21 NON_CONDUCTING, 23 STRANDED_CONDUCTOR
 #   (current density Js imposed), 24 SOLID_CONDUCTOR, 25 STRANDED_COIL; the rows not used by any cell are
 #   reported as warnings when the model is checked. Every step here is static, so the conductivities play no role.
 #   Materials: mur = 1 everywhere (rho of the structures and coils given for the evolution cases).

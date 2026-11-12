@@ -3,7 +3,7 @@
 
 Four transient eddy-current analyses of the same geometry: two rings of square cross-section, 0.2 m x 0.2 m, at
 r = 0.5 m, z = -0.5 m (active) and z = +0.5 m (passive), in a 1 m x 2 m axisymmetric domain of second-order cells
-(``AV2D_nodal``, x = r, y = z). The active ring is driven through its terminal, by a current or by a voltage. The passive
+(``AVA2D_nodal``, x = r, y = z). The active ring is driven through its terminal, by a current or by a voltage. The passive
 ring carries the induced eddy currents. Each variant adds one feature:
 
 .. list-table::
@@ -26,7 +26,7 @@ ring carries the induced eddy currents. Each variant adds one feature:
      - A saturating B-H curve (``bh_curve`` law, Newton-Raphson at every step), backward Euler, the operating range of
        the law.
    * - ``coil_2D_avolt_timint``
-     - massive conductor, ``AV2D_nodal_timint``
+     - massive conductor, ``AVA2D_nodal_timint``
      - The time-integrated electric potential (symmetric A-v system): the terminal DOF is the time integral of the
        voltage, AMPS is still the current.
 

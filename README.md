@@ -2,6 +2,11 @@
 
 python Tokamak Eddy-currents Code 3D: A finite-element code for electromagnetic simulation of plasma equilibria and disruptions.
 
+Formulations: A, V-A (2D and 3D, nodal and edge elements, stranded coils with circuits, time-integrated variants), the
+reduced scalar potential with its source field (`PHI3D_nodal`), and the T-phi (H) formulation in 3D, 2D and
+axisymmetric (`TPHI3D_edge`, `TPHI2D_edge`: cuts, fixed-T coils, superconductor power laws with Jc(B)); nonlinear
+laws (B-H curves, power laws) solved by Newton.
+
 ## Supported platforms
 
 - Linux and Windows (x86_64), through the conda packages
@@ -35,7 +40,8 @@ And around them:
   (+ `pytec3d-element-library`, `pytec3d-libmesh`), with the build scripts of the solver (`build_windows.sh`: the MSYS2
   build of the Windows solver); `.github/workflows/conda.yml` builds them for Linux and Windows.
 - `examples/`: commented example analyses (2D and 3D coils, an electromagnet, ITER equilibria and vertical
-  displacements in 2D and 3D), each with its mesh, model data and `macro.py`.
+  displacements in 2D and 3D, the scalar-potential formulations: an iron frame, a ring with a cut, a fixed-T coil, a
+  superconducting wire and bulk), each with its mesh, model data and `macro.py`.
 - `docs/`: the documentation (Sphinx), with the tutorial notebooks in `docs/tutorials`.
 - `tests/test_benchmarks.py`: the validation of an installation, which runs the benchmark repository.
 - `VERSION`: the version of pyTEC3D, its single source. `python tools/set_version.py X.Y.Z` writes it and copies it into

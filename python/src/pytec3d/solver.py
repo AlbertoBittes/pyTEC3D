@@ -59,6 +59,7 @@ DEFAULT_SOLVER_SETTINGS: dict[str, Any] = {
         "require_residual_reduction": False,
         "require_finite_residual": True,
         "brent_line_search": True,  # False: plain backtracking
+        "picard": False,  # True: the Jacobian of the laws is their secant (Picard iteration)
         "minimum_step_length": 1e-5,
         "linear_tolerance_multiplier": 1e-3,
         "continue_after_max_iterations": True,

@@ -8,10 +8,11 @@
     "Jt": "vector",
     "AMPS": "scalar",
     "CURR": "scalar",
+    "CSG": "scalar",
+    "VLTG": "scalar",
     "Js": "vector",
     "PHI": "scalar",
     "T": "vector",
-    "Hc": "vector",
-    "Hs": "vector",
-    "T0": "vector"
+    "E": "vector",
+    "Hs": "vector"
 }

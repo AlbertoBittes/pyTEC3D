@@ -123,6 +123,10 @@ namespace pytec3d
         /** @brief True when a law term has a dt() trial: the residual needs the velocity or acceleration. */
         bool law_rates() const { return law_rates_; }
 
+        /** @brief True when a law term is the rate of the law's output (Stage::RateResidual): the residual needs the
+         * law at the solution of the previous step. */
+        bool rate_residuals() const { return rate_residuals_; }
+
         /**
          * @brief The operators the static nodal or element fields can have in @p domain: bit k (k = 0, 1, 2) for
          * F_k, the terms with k dt() on the trial, bit 3 for the terms without trial (evaluated at every output, not
@@ -194,6 +198,7 @@ namespace pytec3d
         std::vector<Nabla> nablas_;
         registry::LawMask laws_ = 0;
         bool law_rates_ = false;
+        bool rate_residuals_ = false;
         std::array<std::array<unsigned char, registry::kNumDomain>, 2> field_operators_{}; ///< Nodal, element; by domain.
         /// The FEs to reinit, by domain, operation and whether laws are selected; the first gives the geometry.
         std::vector<std::vector<libMesh::FEAbstract *>> needed_fes_;

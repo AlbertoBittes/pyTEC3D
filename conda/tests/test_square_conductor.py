@@ -46,8 +46,8 @@ def main() -> int:
     identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     solver.model.data = {
         "element_types": {
-            "1": {"element_type": "AV2D_nodal", "option1": "NON_CONDUCTING", "option2": 1, "option3": 0},
-            "2": {"element_type": "AV2D_nodal", "option1": "STRANDED_CONDUCTOR", "option2": 1, "option3": 0},
+            "1": {"element_type": "AVA2D_nodal", "option1": "NON_CONDUCTING", "option2": 1, "option3": 0},
+            "2": {"element_type": "AVA2D_nodal", "option1": "STRANDED_CONDUCTOR", "option2": 1, "option3": 0},
         },
         "materials": {"1": {"mur": identity}},
         "constants": {"1": {"thickness": 1.0}},

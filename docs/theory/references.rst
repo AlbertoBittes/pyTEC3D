@@ -9,7 +9,7 @@ Finite elements for eddy currents
 .. [Biro1999] O. Biro, "Edge element formulations of eddy current problems", Computer Methods in Applied Mechanics and
    Engineering 169, 391-405 (1999).
 .. [Nedelec1980] J.-C. Nedelec, "Mixed finite elements in R3", Numerische Mathematik 35, 315-341 (1980): the edge
-   (curl-conforming) elements of ``AV3D_edge``.
+   (curl-conforming) elements of ``AVA3D_edge``.
 .. [Bossavit1998] A. Bossavit, *Computational Electromagnetism: Variational Formulations, Complementarity, Edge
    Elements*, Academic Press (1998).
 .. [AlbaneseRubinacci1988] R. Albanese, G. Rubinacci, "Integral formulation for 3D eddy-current computation using
@@ -21,33 +21,26 @@ Finite elements for eddy currents
 .. [MAPDLTheory2024] *Mechanical APDL Theory Reference*, Release 2024 R2, section 5.4 "Stranded Coil Analyses"
    (A-VOLT-EMF formulation: coil volume, symmetry factor, time-integrated variant).
 
-Scalar potential, A, T-A and H-phi formulations
------------------------------------------------
+T-phi formulation
+---------------------------------------
 
 .. [SimkinTrowbridge1979] J. Simkin, C. W. Trowbridge, "On the use of the total scalar potential in the numerical
    solution of field problems in electromagnetics", International Journal for Numerical Methods in Engineering 14,
-   423-440 (1979): total and reduced scalar potentials (``PHI3D_nodal``, ``PHI2D_nodal``).
+   423-440 (1979): total and reduced scalar potentials (``TPHI3D_edge``).
 .. [Mayergoyz1987] I. D. Mayergoyz, M. V. K. Chari, J. D'Angelo, "A new scalar potential formulation for
    three-dimensional magnetostatic problems", IEEE Transactions on Magnetics 23(6), 3889-3894 (1987): the cancellation
    error of the reduced potential.
-.. [EmsonSimkin1983] C. R. I. Emson, J. Simkin, "An optimal method for 3-D eddy currents", IEEE Transactions on
-   Magnetics 19(6), 2450-2452 (1983): the vector potential alone in the conductors, its implicit gauge (``A3D_edge``).
-.. [Ren1996] Z. Ren, "Influence of the R.H.S. on the convergence behaviour of the curl-curl equation", IEEE
-   Transactions on Magnetics 32(3), 655-658 (1996): source currents as the curl of a source field (``T0``).
+.. [Geuzaine2024] C. Geuzaine, "Introduction to Numerical Methods: Finite Element Formulations for High-Temperature
+   Superconductors", 4th International School on Numerical Modelling for Applied Superconductivity, Barcelona, 2024.
 .. [Carpenter1977] C. J. Carpenter, "Comparison of alternative formulations of 3-dimensional magnetic-field and
-   eddy-current problems at power frequencies", Proceedings of the IEE 124(11), 1026-1034 (1977): the T-Omega
+   eddy-current problems at power frequencies", Proceedings of the IEE 124(11), 1026-1034 (1977): the T-Omega (T-phi)
    decomposition.
-.. [Zhang2017] H. Zhang, M. Zhang, W. Yuan, "An efficient 3D finite element method model based on the T-A formulation
-   for superconducting coated conductors", Superconductor Science and Technology 30(2), 024005 (2017).
-.. [Liang2017] F. Liang, S. Venuturumilli et al., "A finite element model for simulating second generation high
-   temperature superconducting coils/stacks with large number of turns", Journal of Applied Physics 122, 043903
-   (2017).
-.. [Huber2022] F. Huber, W. Song, M. Zhang, F. Grilli, "The T-A formulation: an efficient approach to model the
-   macroscopic electromagnetic behaviour of HTS coated conductor applications", Superconductor Science and Technology
-   35(4), 043003 (2022): review (``TA3D_edge``).
+.. [Kuczmann2009] M. Kuczmann, "Potential Formulations in Magnetics Applying the Finite Element Method", lecture notes,
+   Szechenyi Istvan University, Gyor, 2009.
+
 .. [Dular2020] J. Dular, C. Geuzaine, B. Vanderheyden, "Finite-element formulations for systems with high-temperature
    superconductors", IEEE Transactions on Applied Superconductivity 30(3), 8200113 (2020): h-phi and a-v
-   formulations compared (``HPHI3D_edge``).
+   formulations compared (``TPHI3D_edge``).
 .. [Arsenault2021] A. Arsenault, F. Sirois, F. Grilli, "Implementation of the H-phi formulation in COMSOL Multiphysics
    for simulating the magnetization of bulk superconductors and comparison with the H-formulation", IEEE Transactions
    on Applied Superconductivity 31(2), 6800111 (2021).

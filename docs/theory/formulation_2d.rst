@@ -1,9 +1,9 @@
 .. _theory-2d:
 
-2D formulation: ``AV2D_nodal``
-------------------------------
+2D formulation: ``AVA2D_nodal``
+-------------------------------
 
-The 2D element type ``AV2D_nodal`` (:ref:`el-av2d`) models bodies that are invariant along a direction: **planar**
+The 2D element type ``AVA2D_nodal`` (:ref:`el-av2d`) models bodies that are invariant along a direction: **planar**
 (prismatic, invariant along :math:`z`, ``option3 = 0``) or **axisymmetric** (invariant around the :math:`y` axis,
 ``option3 = 1``, with :math:`x = r`). The currents flow out of plane and the field lies in the plane.
 
@@ -89,7 +89,7 @@ Weak form and element matrices
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 With :math:`A_h=\sum_jN_j\,a_j`, the test functions :math:`w_i=N_i\mathbf{e}_z` and the weight :math:`L` in every
-integral (:math:`\int_e f = \sum_g \omega_g\,|J_g|\,L_g\,f(\mathbf{x}_g)`), the terms of ``AV2D_nodal`` are, domain by
+integral (:math:`\int_e f = \sum_g \omega_g\,|J_g|\,L_g\,f(\mathbf{x}_g)`), the terms of ``AVA2D_nodal`` are, domain by
 domain:
 
 .. list-table::
@@ -168,5 +168,5 @@ Notes
 * No gauge is needed: the out-of-plane potential has no gradient freedom (:ref:`theory-gauge`).
 * Element fields: ``B``, ``H`` (nodal and element) and ``Jt`` (element, the table above). The constant part of
   ``Jt`` (``Js`` of a stranded conductor) is evaluated at every output from the current loads.
-* The time-integrated variant ``AV2D_nodal_timint`` uses :math:`v=\int V dt` for the circuit-coupled conductors and
+* The time-integrated variant ``AVA2D_nodal_timint`` uses :math:`v=\int V dt` for the circuit-coupled conductors and
   the time integrals of VOLT and EMF for the coils (:ref:`theory-timint`).

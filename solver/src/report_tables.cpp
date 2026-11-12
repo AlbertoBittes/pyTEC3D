@@ -502,6 +502,7 @@ namespace pytec3d::report
                                                 scientific(newton.absolute_residual_tolerance)})
                 .row({"Step tolerance", "relative " + scientific(newton.relative_step_tolerance) + ", absolute " +
                                             scientific(newton.absolute_step_tolerance)})
+                .row({"Jacobian of the laws", newton.picard ? "secant (Picard)" : "tangent (Newton)"})
                 .row({"Line search", newton.brent_line_search ? "Brent" : "backtracking"})
                 .row({"Minimum step length", scientific(newton.minimum_step_length)})
                 .row({"Linear tolerance multiplier", scientific(newton.linear_tolerance_multiplier)})

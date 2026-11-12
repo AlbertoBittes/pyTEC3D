@@ -22,9 +22,9 @@
 #
 # Model data (model_data.json)
 #   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
-#   * 21: AV2D_nodal / NON_CONDUCTING  / 2 / 1   air
-#   * 23: AV2D_nodal / STRANDED_COIL   / 2 / 1   coil: A_z + VOLT (terminal voltage) + EMF (induced voltage)
-#   * 24: AV2D_nodal / SOLID_CONDUCTOR / 2 / 1   passive ring: A_z only (eddy currents)
+#   * 21: AVA2D_nodal / NON_CONDUCTING  / 2 / 1   air
+#   * 23: AVA2D_nodal / STRANDED_COIL   / 2 / 1   coil: A_z + VOLT (terminal voltage) + EMF (induced voltage)
+#   * 24: AVA2D_nodal / SOLID_CONDUCTOR / 2 / 1   passive ring: A_z only (eddy currents)
 #   Materials: 21 air (mur = 1); 23 mur = 1 (its rho is not used: a stranded coil has no eddy currents);
 #              24 mur = 1, rho = 1e-8 Ohm m.
 #   Real constants (CONSTANT 1, used by every cell; only the coil reads the coil constants):

@@ -88,7 +88,10 @@ Reading and writing:
    * - Function
      - Effect
    * - ``set_value_on_selection(mesh, array_name, value, component=0, location="node")``
-     - Write ``value`` in one component of the array at the selected nodes / cells.
+     - Write ``value`` in one component of the array at the selected nodes / cells: one value for all, or an array
+       with one value per selected id, in increasing id order (the order of ``selected_ids`` and
+       ``get_selection_values``). ``component=None``: all the components of a vector array, ``value`` a vector (the
+       same for all) or an array of shape (selected ids, components). The ParaView filter writes one value.
    * - ``get_selection_values(mesh, array_name, component=0, location="node")``
      - The values at the selected nodes / cells, in increasing id order (``"ID"`` gives the ids).
    * - ``selected_ids(mesh, location)``, ``selection_mask(mesh, location)``
@@ -106,6 +109,23 @@ Boundary of the whole model:
    selection.select_all(mesh)
    selection.nsel_ext(mesh)
    selection.set_value_on_selection(mesh, "_A", 0, 2)
+
+A value per node, computed from the coordinates of the selected nodes (e.g. an applied field as a total potential on
+the boundary, :math:`\phi=-H_0z`), or per edge (the circulations of a known field on the selected midside nodes):
+
+.. code-block:: python
+
+   selection.select_all(mesh)
+   selection.nsel_ext(mesh)
+   z = meshes.points(mesh)[selection.selected_ids(mesh), 2]
+   selection.set_value_on_selection(mesh, "_PHI", -h0 * z)         # one value per selected node
+
+   mids, start, end = tree_gauge.edges(mesh, cell_ids)            # the edges of some cells, sorted by midside id
+   selection.select(mesh, "ID", mids)
+   selection.set_value_on_selection(mesh, "_T", tree_gauge.edge_circulations(mesh, start, end, t0), 2)
+
+   selection.select(mesh, "TYPE", 3, location="elem")
+   selection.set_value_on_selection(mesh, "Js", js_cells, None, location="elem")   # (cells, 3): all components
 
 A face of a box, from a coordinate range (mind the tolerance):
 

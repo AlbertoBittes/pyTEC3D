@@ -287,9 +287,15 @@ namespace pytec3d
                     selected |= registry::bit(law);
 
                     std::set<std::string> keys = {"type"};
+                    std::vector<registry::CurveId> law_curves;
                     if (info.curve != registry::CurveId::COUNT)
+                        law_curves.push_back(info.curve);
+                    for (const registry::CurveId c : info.curves)
+                        if (c != registry::CurveId::COUNT)
+                            law_curves.push_back(c);
+                    for (const registry::CurveId curve_id : law_curves)
                     {
-                        const registry::CurveSource &curve = registry::kCurveSources[static_cast<std::size_t>(info.curve)];
+                        const registry::CurveSource &curve = registry::kCurveSources[static_cast<std::size_t>(curve_id)];
                         const std::string x_key(curve.x), y_key(curve.y);
                         keys.insert({x_key, y_key});
                         auto x = read_curve_array(entry, x_key, context);
@@ -299,7 +305,7 @@ namespace pytec3d
                         for (std::size_t i = 1; i < x.size(); ++i)
                             if (x[i] <= x[i - 1])
                                 fail(context + ": '" + x_key + "' must be strictly increasing.");
-                        data.curves_[static_cast<std::size_t>(info.curve)].emplace(id, CurveData(std::move(x), std::move(y)));
+                        data.curves_[static_cast<std::size_t>(curve_id)].emplace(id, CurveData(std::move(x), std::move(y)));
                     }
                     for (auto key = entry.begin(); key != entry.end(); ++key)
                         if (!keys.count(key.key()))

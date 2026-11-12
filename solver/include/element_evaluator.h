@@ -73,6 +73,7 @@ namespace pytec3d
             const Vector *solution_ddt = nullptr;                ///< Its second time derivative; needed by dt(dt()) field terms.
             /// d(d^k u / dt^k)/du of the time scheme: {1, c_v, c_a}; the law Jacobian blocks with k dt() are scaled by it.
             std::array<libMesh::Real, 3> jacobian_scale = {1.0, 0.0, 0.0};
+            bool picard = false; ///< The law Jacobian blocks with the secant of each law instead of its tangent.
         };
 
         explicit ElementEvaluator(const Inputs &inputs);
@@ -87,6 +88,11 @@ namespace pytec3d
 
         /** @brief Jacobian (J) and residual (R) terms of the laws selected on the element, at the current solution. */
         void add_nonlinear(Matrix &J, Vector &R);
+
+        /** @brief The outputs of the Stage::RateResidual terms (a law output under dt(), e.g. B(H) of T-phi) at
+         * Inputs::solution x: R += scale[k] block(x) x for the terms with k dt() on the trial, the laws evaluated at x.
+         * The time scheme applies to these outputs as to the DOFs (ElementBuilder::law_output, the system's history). */
+        void add_law_output(Vector &R, const std::array<libMesh::Real, 3> &scale);
 
         /**
          * @brief Operators of the static nodal or element fields (Matrices operation): the terms with a trial give
@@ -114,6 +120,7 @@ namespace pytec3d
             virtual void add_matrices(Matrix &K, Matrix &C, Matrix &M) = 0;
             virtual void add_rhs(Vector &F) = 0;
             virtual void add_nonlinear(Matrix &J, Vector &R) = 0;
+            virtual void add_law_output(Vector &R, const std::array<libMesh::Real, 3> &scale) = 0;
             virtual void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F) = 0;
             virtual void field_values(FieldKind kind, const ElementType::FieldIndices &indices, Vector &values) = 0;
             virtual void check_parameters() = 0;

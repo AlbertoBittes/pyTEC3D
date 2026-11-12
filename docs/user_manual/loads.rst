@@ -25,6 +25,16 @@ A load is an array value, read at every solve. Loads can change freely between s
      - 2D ``CIRCUIT_COUPLED_CONDUCTOR``; 3D ``SOLID_CONDUCTOR``
      - Load of the V equation. 2D: total current through the conductor, on the master node of its coupling. 3D:
        current injected into the conductor at the node [A] (a negative value extracts it).
+   * - ``CSG``
+     - midside nodes
+     - ``AVA3D_edge``, ``AVA3D_edge_timint``
+     - Load of the edge DOF of A (the circulation of A along the edge), on the midside point of the edge, in the
+       libMesh orientation of the edge (from its lexicographically smaller end point to the larger one).
+   * - ``VLTG``
+     - midside nodes
+     - ``TPHI3D_edge`` (``SOLID_CONDUCTOR``, ``CUT_LAYER``)
+     - Load of the edge DOF of T (a current [A]): a voltage [V]. On a coupled cut DOF it is the voltage around the
+       ring (:ref:`el-tphi3d`).
    * - ``M``
      - material
      - all but ``NON_CONDUCTING``, ``SOFT_MAGNETIC``
@@ -35,7 +45,9 @@ Nodal loads
 
 A nodal load (``CURR``, ``AMPS``) is a point value added to the right-hand side of the equation of its DOF on the
 node, not an integral: the whole value goes to the node, once, whatever the number of elements around it. Zero
-everywhere means no load.
+everywhere means no load. An edge (NEDELEC_ONE) field has its DOF on the midside node of the edge: its load
+(``CSG``, ``VLTG``) is a scalar point array whose value there goes to that DOF, in the orientation of the edge. On a
+coupled DOF (``CP``) the loads of its edges add up.
 
 An element type may also give a **vector** DOF field a vector nodal load (a 3-component point array, e.g. a force on
 a displacement). Its components refer to the **nodal frame** of the node (``node_angles``), as the Dirichlet values

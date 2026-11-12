@@ -47,7 +47,7 @@ Lines and some Bezier cells are also read. Rules:
 * All the cells of a model have the dimension of its element type: 2D cells for a 2D element type, 3D cells for a 3D
   one (no mixed 2D / 3D meshes).
 * An FE order of 2 (``option2 = 2``) needs quadratic cells.
-* **Edge elements** (``AV3D_edge*``) need quadratic cells: their DOFs are stored on the midside nodes, one per edge.
+* **Edge elements** (``AVA3D_edge*``) need quadratic cells: their DOFs are stored on the midside nodes, one per edge.
 * 2D axisymmetric models use the x coordinate as the radius (``x >= 0``) and the y axis as the axis of symmetry.
 * Cells whose node ordering is inverted are reoriented on import (the log counts them); degenerate and distorted
   cells are reported in the *Mesh quality* table.

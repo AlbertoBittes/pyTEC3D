@@ -34,6 +34,14 @@ Python right away:
      - cells
      - Total current density [A/m^2]: imposed (``Js``), eddy / conduction (:math:`-\sigma(\partial_t\mathbf{A}+\nabla
        V)`) and coil current density, depending on the domain (:doc:`element_library`).
+   * - ``E``
+     - cells
+     - Electric field [V/m] of the conductors: :math:`-\partial_t\mathbf{A}-\nabla V` (A, V-A: the 3D types and
+       ``AVA2D_nodal*`` in SOLID_CONDUCTOR and CIRCUIT_COUPLED_CONDUCTOR), :math:`\rho\nabla\times\mathbf{T}` (T-phi
+       in SOLID_CONDUCTOR, with a power law :math:`E(J)`). With ``Jt`` it gives the dissipated power density
+       :math:`\mathbf{E}\cdot\mathbf{J}` (AC loss: its sum times the cell sizes and the time steps), the critical
+       state (:math:`|E|` against :math:`E_c`), the voltage along a conductor. Not in the static scalar potential
+       type (``PHI3D_nodal``).
 
 How these fields are computed (projection, quadrature mean, time derivatives of the time scheme) is explained in
 :ref:`theory-postprocessing`.

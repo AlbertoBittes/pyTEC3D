@@ -100,6 +100,54 @@ def _cell_edges(mesh: vtkUnstructuredGrid) -> tuple[np.ndarray, np.ndarray, np.n
     return np.concatenate(v0)[order], np.concatenate(v1)[order], np.concatenate(mid)[order], skipped
 
 
+def edges(
+    mesh: vtkUnstructuredGrid, cell_ids: Iterable[int] | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The distinct edges of the quadratic cells (all, or ``cell_ids``), oriented as the solver orients an edge DOF.
+
+    The value of an edge field (``_T``, ``_A``, ``_Hs``: component 2 of the midside point) is a circulation along the
+    edge, from ``start`` to ``end``: libMesh orients a NEDELEC_ONE DOF from the end point with the lexicographically
+    smaller coordinates (x, then y, then z) to the larger one. Use it to give the edge values of a known field
+    (:func:`edge_circulations`) or the sign of a current across a cut.
+
+    Returns:
+        ``(midside, start, end)`` point ids, one entry per edge, sorted by midside id.
+    """
+    meshes.check_grid(mesh)
+    v0, v1, midside, _ = _cell_edges(mesh)
+    if cell_ids is not None:
+        offsets, connectivity = meshes.cell_connectivity(mesh)
+        types = meshes.cell_types(mesh)
+        keep = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
+        for cell in np.asarray(list(cell_ids), dtype=np.int64):
+            if int(types[cell]) in EDGE_TABLES:
+                keep[connectivity[offsets[cell] + np.asarray(EDGE_TABLES[int(types[cell])][1])]] = True
+        select = keep[midside]
+        v0, v1, midside = v0[select], v1[select], midside[select]
+    midside, first = np.unique(midside, return_index=True)
+    v0, v1 = v0[first], v1[first]
+    xyz = meshes.points(mesh)
+    a, b = xyz[v0], xyz[v1]
+    larger = np.where(a[:, 0] != b[:, 0], a[:, 0] > b[:, 0],
+                      np.where(a[:, 1] != b[:, 1], a[:, 1] > b[:, 1], a[:, 2] > b[:, 2]))
+    return midside, np.where(larger, v1, v0), np.where(larger, v0, v1)
+
+
+_GAUSS_X, _GAUSS_W = np.polynomial.legendre.leggauss(5)
+
+
+def edge_circulations(mesh: vtkUnstructuredGrid, start: np.ndarray, end: np.ndarray, field: Any) -> np.ndarray:
+    """The circulations of ``field`` (a function of an (n, 3) array of points returning (n, 3) vectors) along the
+    straight segments ``start`` -> ``end`` (point ids, e.g. from :func:`edges`), 5-point Gauss: the edge values of a
+    known vector field (a source field T0 or Hs) in the solver's orientation."""
+    xyz = meshes.points(mesh)
+    p0, chord = xyz[start], xyz[end] - xyz[start]
+    total = np.zeros(len(start))
+    for x, w in zip(_GAUSS_X, _GAUSS_W, strict=True):
+        total += 0.5 * w * np.einsum("ij,ij->i", np.asarray(field(p0 + 0.5 * (x + 1.0) * chord)), chord)
+    return total
+
+
 def add_midside_nodes_mask(mesh: vtkUnstructuredGrid, name: str = MIDSIDE_ARRAY) -> vtkIntArray:
     """Add (or replace) a point array with 1 at the midside points of the quadratic cells, 0 elsewhere."""
     meshes.check_grid(mesh)

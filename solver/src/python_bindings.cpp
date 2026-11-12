@@ -319,6 +319,7 @@ namespace
             n.require_residual_reduction = setting(group, "require_residual_reduction", n.require_residual_reduction);
             n.require_finite_residual = setting(group, "require_finite_residual", n.require_finite_residual);
             n.brent_line_search = setting(group, "brent_line_search", n.brent_line_search);
+            n.picard = setting(group, "picard", n.picard);
             n.minimum_step_length = setting(group, "minimum_step_length", n.minimum_step_length);
             n.linear_tolerance_multiplier = setting(group, "linear_tolerance_multiplier", n.linear_tolerance_multiplier);
             n.continue_after_max_iterations = setting(group, "continue_after_max_iterations", n.continue_after_max_iterations);
@@ -476,6 +477,14 @@ namespace
                 const reg::CurveSource &curve = reg::kCurveSources[static_cast<std::size_t>(info.curve)];
                 law["curve"] = py::make_tuple(std::string(curve.x), std::string(curve.y));
             }
+            py::list curves; // the arrays of its named curves
+            for (const reg::CurveId c : info.curves)
+                if (c != reg::CurveId::COUNT)
+                {
+                    const reg::CurveSource &curve = reg::kCurveSources[static_cast<std::size_t>(c)];
+                    curves.append(py::make_tuple(std::string(curve.x), std::string(curve.y)));
+                }
+            law["curves"] = curves;
             laws[py::str(std::string(reg::kLawIdNames[i]))] = law;
         }
         out["laws"] = laws;

@@ -88,6 +88,9 @@ namespace pytec3d::formulation
         Linear,   ///< K, C (dt() trial), M (dt(dt()) trial) or F; or a nodal / element field term. Assembled once, cached.
         Tangent,  ///< J (law): + c_d block, d the dt() on the trial, at the current solution.
         Residual, ///< R (law): + block * d^d u / dt^d, or + the vector, at the current solution.
+        /// R (law): the rate of the law's output q(u) = block(u) u by the time scheme on q, the trial being dt() of the
+        /// law's own (state) input, e.g. dt(B(H)) of T-phi (any time scheme: the rates of q are stored per element).
+        RateResidual,
     };
 
     enum class EvaluationKind : unsigned char
@@ -174,6 +177,8 @@ namespace pytec3d::formulation
         registry::LawId id;
         signed short input;                  ///< Quadrature evaluation of the field it reads.
         Span<registry::LawOutputId> outputs; ///< Secant (and tangent) of each parameter it replaces, in the order of evaluate_law().
+        /// Quadrature evaluations of its extra inputs (values only, no Jacobian of their variation), -1 after the last.
+        std::array<signed short, 2> inputs = {-1, -1};
     };
 
     struct ElementTypeSpec

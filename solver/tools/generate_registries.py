@@ -23,6 +23,9 @@ element_types.json, "element_types": { "<name>": {
       The domains (domains.json) a TYPE row of the model data may give this element type (option1); every
       domain when missing. The model check rejects the others.
   "time_order": 0 | 1 | 2      highest time derivative of the formulation (default 1): at most that many dt().
+  "second_order": false        the type cannot run second order (option2 = 2 is refused by the model check), e.g. a
+                               scalar potential whose gradients must lie in the first-order Nedelec space of another
+                               field (the Whitney pair). Absent (default): the Lagrange fields take option2.
   "out_of_plane_length": "thickness"
       2D only: the scalar parameter giving the out-of-plane length L of the elements (times 2 pi r when
       axisymmetric); L = 1 without it. It scales the integration weights and the out-of-plane gradient.
@@ -41,20 +44,21 @@ element_types.json, "element_types": { "<name>": {
       expression is compiled into evaluate_expression(). Everywhere else a parameter is written by name.
 
   "dof_fields":     { "A": {"finite_elements": "NEDELEC_ONE", "active_components": ["z"],
-                            "nodal_loads": "AMPS", "domain": [...], "order": "first"} }
+                            "nodal_loads": "AMPS", "domain": [...]} }
   "nodal_fields":   { "B": {"active_components": [...], "domain": [...]} }
   "element_fields": { "Jt": {"active_components": ["z"], "domain": [...]} }
       Fields of fields.json. A vector field has one active component or all those of the dimension (default).
       DOF fields are LAGRANGE (LAGRANGE_VEC for a vector) unless finite_elements says NEDELEC_ONE; nodal fields
       L2_LAGRANGE(_VEC); element fields MONOMIAL CONSTANT. Lagrange families take the order of the options
-      (option2), or first order with "order": "first" on a DOF field (e.g. a scalar potential whose gradients must
-      lie in the NEDELEC_ONE space of another field: the Whitney pair).
+      (option2); NEDELEC_ONE is first order.
       Variables: every field is one libMesh variable. A vector with all the components of the element dimension
       (2D or 3D) is a vector variable named like the field (LAGRANGE_VEC, L2_LAGRANGE_VEC, NEDELEC_ONE,
       MONOMIAL_VEC); a single component is a scalar variable <field>_<c> (e.g. A_z of a 2D element). A nodal and an
       element field can share a name.
-      nodal_loads (Lagrange DOF fields) is an mn. parameter of the same type as the field, added to the right-hand
-      side on the nodes: a point value, not an integral. A scalar load goes to the DOF of the node. A vector load has
+      nodal_loads is an mn. parameter added to the right-hand side: for a Lagrange DOF field of the same type as the
+      field; for a NEDELEC_ONE field a scalar, its value on the midside point of an edge loading the edge DOF (in the
+      DOF's orientation, the circulation's), e.g. CSG of A, VLTG of T. Either way it is
+      a point value, not an integral. A scalar load goes to the DOF of the node. A vector load has
       3 components in the node coordinate system (the node_angles frame, like the Dirichlet values _F): it is
       rotated to global, f = R f_node, and each global component the field has goes to the DOF of that component;
       the others do no work on the field and are dropped. A field with a single active component ignores the node
@@ -83,25 +87,31 @@ element_types.json, "element_types": { "<name>": {
 
 nonlinear_laws.json, "nonlinear_laws": { "<name>": {
 
+  "element_types": ["..."],            optional: the element types the law applies to (default: all those having a replaced coefficient).
   "source": "mat" | "rc" | "me",       the ids of the model data "nonlinear_laws" section: MATERIAL, CONSTANT or TYPE ids.
                                        An entry {"type": "<name>", ...} under an id selects the law on those cells.
   "input": "B",                        a nodal or element field, computed at the quadrature points by its kernels
                                        (element kernels if the element type has an element field of that name, else
                                        the nodal ones), neither averaged nor projected.
+  "inputs": ["H"],                     optional: more fields read at the quadrature points (at most MAX_LAW_INPUTS),
+                                       values only: the Jacobian has no terms of their variation (no cross-coupling).
   "curve": {"x": "B", "y": "H"},       optional: the entry of the law carries the arrays "<x>" and "<y>" of a
-                                       curve y(x), extended by its first and last segments.
+                                       curve y(x), extended by its first and last segments (``curve`` in expressions).
+  "curves": {"jc": {"x": "Bjc", "y": "jc"}},  optional: more named curves (at most MAX_LAW_CURVES), the same way.
   "expressions": { "b": "B.norm()", ... },  C++, in order.
   "coefficients": { "nu[][]": {"secant": "...", "tangent": "..."}, "nu_gauge": {"secant": "..."} } } }
       The coefficients (parameters or expressions of the element types) the law replaces, with their type,
       where the law is selected: secant S(x) and optionally
-      tangent d(S(x) x)/dx, x the input. Expressions see the input by its name, the curve (curve.value(x),
+      tangent d(S(x) x)/dx, x the input (a field that may read time derivatives: Jt = curl(dt(T))). Expressions see the input by its name, the curve (curve.value(x),
       curve.slope(x)), the constants and parameters of the element type.
 
-  A law applies to the element types that have a parameter it replaces. Every kernel with such a coefficient
+  A law applies to the element types that have a parameter it replaces (of its "element_types", if given). Every kernel with such a coefficient
   P gets variants used where the law is selected, in place of the kernel:
       K block t^T P L(u), d dt() on the trial:  residual  t^T S L(d^d u / dt^d),
-                                                Jacobian  c_d t^T T L, T the tangent if L is the input's own trial
-                                                (B = curl(A)) and d = 0, the secant otherwise;
+                                                Jacobian  c_d t^T T L, T the tangent if the trial, dt() included,
+                                                is a trial of the input with a sign alone as coefficient
+                                                (B = curl(A), H = T - grad(PHI), Jt = curl(dt(T))), the secant
+                                                otherwise;
       F vector t^T P:                           residual  - t^T S (no Jacobian: its input is not the unknown);
       nodal / element kernel:                   S in place of P; the field is then evaluated at every output.
   c_0 = 1 and c_1, c_2 are the coefficients of v and a on u in the time scheme. The residual of the system is
@@ -118,6 +128,8 @@ IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Names an expression can use without a namespace.
 STD_FUNCTIONS = ("abs", "sqrt", "cbrt", "pow", "exp", "log", "sin", "cos", "tan", "atan2", "hypot", "min", "max")
 LIBMESH_NAMES = ("Real", "RealVectorValue", "RealTensorValue", "pi", "outer_product")
+MAX_LAW_INPUTS = 2  # extra inputs of a law (LawSpec::inputs)
+MAX_LAW_CURVES = 2  # extra curves of a law (LawInfo::curves)
 RESERVED_NAMES = {"axisymmetric", "source", "input", "curve", "I", "std", "libMesh", *STD_FUNCTIONS, *LIBMESH_NAMES}
 CPP_KEYWORDS = {
     "alignas", "alignof", "and", "asm", "auto", "bool", "break", "case", "catch", "char", "class", "const",
@@ -305,7 +317,8 @@ def read_laws(resource_dir):
     for name, options in definitions.items():
         context = f"nonlinear_laws.json, law '{name}'"
         check_enumerator(name, context)
-        check_keys(options, {"source", "input", "curve", "expressions", "coefficients"}, context)
+        check_keys(options, {"element_types", "source", "input", "inputs", "curve", "curves", "expressions",
+                             "coefficients"}, context)
         source = read_string(options, "source", context)
         if source not in LAW_SOURCES:
             fail(f"{context}: source must be one of {', '.join(LAW_SOURCES)} (the model data rows that select it).")
@@ -316,6 +329,23 @@ def read_laws(resource_dir):
             if x == y or "type" in (x, y):
                 fail(f"{context}, curve: x and y must be two names other than 'type'.")
             curve = (name, x, y)
+        extra_curves = []
+        for cname, cdef in options.get("curves", {}).items():
+            where = f"{context}, curves '{cname}'"
+            check_enumerator(cname, where)
+            if cname in RESERVED_NAMES:
+                fail(f"{where}: the name is reserved.")
+            check_keys(cdef, {"x", "y"}, where)
+            extra_curves.append((cname, (name, *(read_string(cdef, key, where) for key in ("x", "y")))))
+        if len(extra_curves) > MAX_LAW_CURVES:
+            fail(f"{context}: at most {MAX_LAW_CURVES} curves besides 'curve'.")
+        arrays = [a for c in [curve] + [c for _, c in extra_curves] if c for a in c[1:]]
+        if len(arrays) != len(set(arrays)) or "type" in arrays:
+            fail(f"{context}: the x and y names of the curves must all differ, and differ from 'type'.")
+        extra_inputs = options.get("inputs", [])
+        if not isinstance(extra_inputs, list) or len(extra_inputs) > MAX_LAW_INPUTS or not all(
+                isinstance(i, str) for i in extra_inputs):
+            fail(f"{context}: inputs is a list of at most {MAX_LAW_INPUTS} field names.")
         locals_ = options.get("expressions", {})
         check_keys(locals_, set(locals_), f"{context}, expressions")
         for local, text in locals_.items():
@@ -334,7 +364,8 @@ def read_laws(resource_dir):
             replaces[parameter] = {"type": TYPE_BY_SUFFIX[suffix], "secant": read_string(value, "secant", where),
                                    "tangent": read_string(value, "tangent", where, required=False)}
         laws[name] = {"name": name, "source": source, "input": read_string(options, "input", context), "curve": curve,
-                      "locals": locals_, "replaces": replaces}
+                      "extra_curves": extra_curves, "extra_inputs": extra_inputs, "locals": locals_, "replaces": replaces,
+                      "element_types": options.get("element_types")}
     if len(laws) > MAX_LAWS:
         fail(f"nonlinear_laws.json: at most {MAX_LAWS} laws.")
     return laws
@@ -346,7 +377,8 @@ def read_laws(resource_dir):
 class ElementType:
     """One element type of element_types.json, checked and reduced to the tables of formulation_spec.h."""
 
-    SECTIONS = {"inherits", "dimension", "domains", "time_order", "out_of_plane_length", "constants", "parameters", "expressions",
+    SECTIONS = {"inherits", "dimension", "domains", "time_order", "second_order", "out_of_plane_length", "constants",
+                "parameters", "expressions",
                 "dof_fields", "dof_kernels", "nodal_fields", "nodal_kernels", "element_fields", "element_kernels"}
 
     def __init__(self, name, definition, domains, fields_json, laws, law_index):
@@ -366,6 +398,8 @@ class ElementType:
         self.time_order = definition.get("time_order", 1)
         if self.time_order not in (0, 1, 2):
             fail(f"{self.context}: time_order must be 0 (static), 1 or 2.")
+        if definition.get("second_order", True) not in (True, False):
+            fail(f"{self.context}: second_order is false (first order only) or absent.")
 
         self.read_parameters(definition)
         self.length = definition.get("out_of_plane_length")
@@ -446,7 +480,7 @@ class ElementType:
 
     def read_fields(self, kind, fields):
         check_keys(fields, set(fields), f"{self.context}, {kind}_fields")
-        allowed = {"dof": {"active_components", "finite_elements", "nodal_loads", "domain", "order"},
+        allowed = {"dof": {"active_components", "finite_elements", "nodal_loads", "domain"},
                    "nodal": {"active_components", "domain"},
                    "element": {"active_components", "domain"}}[kind]
         for name, options in fields.items():
@@ -494,17 +528,13 @@ class ElementType:
                     family = "LAGRANGE_VEC"
                 if family == "LAGRANGE_VEC" and not multi:
                     fail(f"{context}: LAGRANGE_VEC needs a vector field with all its components.")
-                if family == "NEDELEC_ONE" and (self.dimension != 3 or not multi):
-                    fail(f"{context}: NEDELEC_ONE needs a vector field with all its components on a 3D element.")
+                if family == "NEDELEC_ONE" and not multi:
+                    fail(f"{context}: NEDELEC_ONE needs a vector field with all the components of the element "
+                         "dimension (in-plane on a 2D element).")
                 if kind == "nodal":
                     family = "L2_" + family
                 field["family"] = family
-                order = options.get("order", "option")
-                if order not in ("option", "first"):
-                    fail(f"{context}: order is \"option\" (option2, the default) or \"first\".")
-                if order == "first" and family not in ("LAGRANGE", "LAGRANGE_VEC"):
-                    fail(f"{context}: order \"first\" is for Lagrange DOF fields (NEDELEC_ONE is always first order).")
-                field["order"] = "First" if family == "NEDELEC_ONE" or order == "first" else "Option"
+                field["order"] = "First" if family == "NEDELEC_ONE" else "Option"
                 field["fe"] = self.fe_index(FE_OF_FAMILY[family], field["order"])
             else:
                 field["family"] = "MONOMIAL_VEC" if multi else "MONOMIAL"
@@ -515,12 +545,14 @@ class ElementType:
 
             loads = options.get("nodal_loads")
             if loads is not None:
-                if field["family"] == "NEDELEC_ONE":
-                    fail(f"{context}: nodal_loads need nodal (Lagrange) DOFs; NEDELEC_ONE DOFs are on the edges.")
                 parameter = self.parameters.get(loads)
                 if not parameter or parameter["source"] != "Point":
                     fail(f"{context}: nodal_loads '{loads}' is not a point-data (mn.) parameter of the element type.")
-                if parameter["type"] != field["value"]:
+                if field["family"] == "NEDELEC_ONE":
+                    if parameter["type"] != S:
+                        fail(f"{context}: the nodal_loads of a NEDELEC_ONE field is a scalar point array: its value on the "
+                             "midside point of an edge loads the edge DOF.")
+                elif parameter["type"] != field["value"]:
                     fail(f"{context}: nodal_loads '{loads}' is a {parameter['type'].lower()}, the field a "
                          f"{field['value'].lower()}: a scalar field takes a scalar load, a vector field a vector one.")
                 field["nodal_load"] = parameter["array"]
@@ -584,8 +616,8 @@ class ElementType:
                      "(scalar FE: grad of a scalar; curl of the out-of-plane component of a 2D element).")
         else:
             nedelec = fe["family"] == "NEDELEC_ONE"
-            if operator == "Identity" or operator == "Curl" and self.dimension == 3:
-                output = V
+            if operator == "Identity" or operator == "Curl" and (self.dimension == 3 or nedelec):
+                output = V  # the curl of an in-plane NEDELEC_ONE field of a 2D element: its out-of-plane component
             elif operator == "Div" and not nedelec:
                 output = S
             elif operator == "Grad" and not nedelec:
@@ -608,12 +640,15 @@ class ElementType:
         self.replacements = {}  # parameter -> [{law, law_id, secant, tangent}]
         self.law_by_name = {}
         for name, law in laws.items():
+            if law["element_types"] is not None and self.name not in law["element_types"]:
+                continue
             present = [(parameter, r) for parameter, r in law["replaces"].items() if parameter in self.parameters]
             if not present:
                 continue
             context = f"{self.context}, law '{name}'"
             parameters = self.parameters
-            used_names = set(parameters) | {c["name"] for c in self.constants} | {law["input"]}
+            used_names = (set(parameters) | {c["name"] for c in self.constants} | {law["input"]} | set(law["extra_inputs"])
+                          | {cname for cname, _ in law["extra_curves"]})
             locals_ = []
             for local, text in law["locals"].items():
                 if local in used_names:
@@ -641,42 +676,55 @@ class ElementType:
                 self.replacements.setdefault(parameter, []).append(
                     {"law": name, "law_id": law_index[name], "secant": names["secant"], "tangent": names.get("tangent")})
             bound = {"name": name, "input_name": law["input"], "curve_key": law["curve"], "locals": locals_,
-                     "outputs": outputs}
+                     "outputs": outputs, "extra_input_names": law["extra_inputs"],
+                     "extra_curves": [cname for cname, _ in law["extra_curves"]]}
             self.laws.append(bound)
             self.law_by_name[name] = bound
 
-    def law_operand(self, name):
-        """The trial of the input of law `name` when the input is that trial alone (B = curl(A)); None otherwise.
-        A K kernel with this trial uses the tangent of the law in J, any other its secant."""
+    def law_operand(self, name, domains=None):
+        """The trials of the input of law `name` in `domains` (those of the kernel, None: all) whose coefficient is a sign
+        alone: B = curl(A); E = -dt(A) - grad(V); H = T - grad(PHI). Empty when a coefficient of the input uses a
+        parameter a law replaces. The kernels with the replaced coefficient on these trials sum to the replaced
+        coefficient times the input: each of them uses the tangent of the law in J."""
         input_name = self.law_by_name[name]["input_name"]
         for kind in ("element", "nodal"):
             terms = self.definition.get(f"{kind}_kernels", {}).get(input_name)
             if terms is not None:
                 break
         else:
-            return None
-        if len(terms) != 1 or "".join((terms[0].get("coeff") or "").split()) or not isinstance(terms[0].get("trial"), str):
-            return None
-        return "".join(terms[0]["trial"].split())
+            return set()
+        if domains:
+            terms = [t for t in terms if not t.get("domain") or set(t["domain"]) & set(domains)]
+        terms = [t for t in terms if isinstance(t.get("trial"), str)]  # a term without trial is a given value
+        operand = set()
+        for t in terms:
+            coeff = "".join((t.get("coeff") or "").split()).lstrip("+-")
+            if coeff in self.replacements:
+                return set()
+            if not coeff:
+                operand.add("".join(t["trial"].split()))
+        return operand
 
     def read_law_inputs(self):
-        """The input of a law is a field evaluated at the quadrature points with its own kernels, not averaged nor projected."""
+        """The inputs of a law are fields evaluated at the quadrature points with their own kernels, not averaged nor
+        projected: the input, then the extra inputs (values only)."""
         for law in self.laws:
             context = f"{self.context}, law '{law['name']}'"
-            name = law["input_name"]
-            key = ("element", name) if ("element", name) in self.field_terms else ("nodal", name)
-            if key not in self.field_terms:
-                fail(f"{context}: input '{name}' is not a nodal or element field with kernels.")
-            field = self.field(name, context, key[0])
-            evaluation = {"kind": "Quadrature", "field": field, "first_term": len(self.terms), "mass_kernel": -1}
-            terms = self.field_terms[key]
-            for position, term in enumerate(terms):
-                options = {k: v for k, v in term.items() if k != "test"}
-                self.read_term(options, "value", field, f"{context}, input term {position}")
-            evaluation["n_terms"] = len(terms)
-            law["input"] = field
-            law["evaluation"] = len(self.evaluations)
-            self.evaluations.append(evaluation)
+            evaluations = []
+            for name in [law["input_name"], *law["extra_input_names"]]:
+                key = ("element", name) if ("element", name) in self.field_terms else ("nodal", name)
+                if key not in self.field_terms:
+                    fail(f"{context}: input '{name}' is not a nodal or element field with kernels.")
+                field = self.field(name, context, key[0])
+                evaluation = {"kind": "Quadrature", "field": field, "first_term": len(self.terms), "mass_kernel": -1}
+                terms = self.field_terms[key]
+                for position, term in enumerate(terms):
+                    options = {k: v for k, v in term.items() if k != "test"}
+                    self.read_term(options, "value", field, f"{context}, input '{name}' term {position}")
+                evaluation["n_terms"] = len(terms)
+                evaluations.append((field, len(self.evaluations)))
+                self.evaluations.append(evaluation)
+            (law["input"], law["evaluation"]), law["extra_inputs"] = evaluations[0], evaluations[1:]
 
     # -- coefficients, kernels, terms --
 
@@ -710,7 +758,7 @@ class ElementType:
         # The terms of the laws, derived from the K and F kernels whose coefficient a law replaces: Jacobian blocks
         # (the tangent when the trial is the law's own input, the secant otherwise), residual blocks (secant) and
         # residual vectors (- the secant of an F kernel).
-        derived = {"Tangent": [], "Residual": [], "ResidualRhs": []}
+        derived = {"Tangent": [], "Residual": [], "RateResidual": [], "ResidualRhs": []}
         for target, terms in groups.items():
             context = f"{self.context}, dof_kernels '{target}'"
             if not isinstance(terms, list) or not terms:
@@ -728,15 +776,28 @@ class ElementType:
                     parsed = self.read_term(term, target, None, f"{context}, kernel {position}")
                     for r in parsed["replacements"]:
                         if with_trial:
-                            own = parsed["term"]["trial_dt"] == 0 and parsed["trial_text"] == self.law_operand(r["law"])
+                            operand = self.law_operand(r["law"], term.get("domain"))
+                            trial = parsed["trial_text"]
+                            # dt() (or dt(dt())) of the law's own state input (dt(T) with H = T - grad(PHI)): the rate
+                            # of the law's output q(u) = S(u) u, by the time scheme on q (as on the DOFs), not S(u)
+                            # times the rate (Stage::RateResidual).
+                            state = trial
+                            while True:
+                                stripped = re.sub(r"dt\(([^()]*)\)", r"\1", state)
+                                if stripped == state:
+                                    break
+                                state = stripped
+                            rate = state != trial and state in operand and not any("dt(" in o for o in operand)
+                            own = trial in operand or rate
                             derived["Tangent"].append((parsed, r["tangent"] if own and r["tangent"] else r["secant"],
                                                        parsed["sign"], r["law_id"]))
-                            derived["Residual"].append((parsed, r["secant"], parsed["sign"], r["law_id"]))
+                            derived["RateResidual" if rate else "Residual"].append(
+                                (parsed, r["secant"], parsed["sign"], r["law_id"]))
                         else:
                             derived["ResidualRhs"].append((parsed, r["secant"], -parsed["sign"], r["law_id"]))
                 self.evaluations.append(evaluation)
         for key, kind, stage in (("Tangent", "Block", "Tangent"), ("Residual", "Block", "Residual"),
-                                 ("ResidualRhs", "Rhs", "Residual")):
+                                 ("RateResidual", "Block", "RateResidual"), ("ResidualRhs", "Rhs", "Residual")):
             if not derived[key]:
                 continue
             evaluation = {"kind": kind, "field": None, "first_term": len(self.terms), "n_terms": len(derived[key]),
@@ -806,8 +867,6 @@ class ElementType:
             if target == "F" and trial is not None:
                 fail(f"{context}: F kernels have no trial.")
         else:
-            if trial_dt and target == "value":
-                fail(f"{context}: the input of a law has no dt() trial.")
             output = VALUE_PRODUCTS.get((ctype, trial_type)) if trial is not None else ctype
             if output is None:
                 fail(f"{context}: no product {ctype} coefficient, {trial_type} trial.")
@@ -943,13 +1002,15 @@ def read_registries(resource_dir):
         element_type.masks = [mask_of.get(p["name"], 0) for p in parameters]
 
     # Curves: one per law that has one, given with the law in the "nonlinear_laws" section of the model data.
-    curves = OrderedDict((law["curve"], {"index": i}) for i, law in enumerate(x for x in laws.values() if x["curve"]))
+    all_curves = [c for law in laws.values() for c in ([law["curve"]] if law["curve"] else []) +
+                  [c for _, c in law["extra_curves"]]]
+    curves = OrderedDict((c, {"index": i}) for i, c in enumerate(all_curves))
     # Law outputs: global names, one meaning each.
     law_outputs = OrderedDict()
     for type_name, element_type in types.items():
         for law in element_type.laws:
             for output in law["outputs"]:
-                shared = {"law": law["name"], "type": output["type"]}
+                shared = {"law": law["name"], "type": output["type"], "parameter": output["parameter"]}
                 if law_outputs.setdefault(output["name"], shared) != shared:
                     fail(f"element type '{type_name}', law '{law['name']}': output '{output['name']}' belongs to another "
                          "law or has another type in another element type.")
@@ -1290,12 +1351,16 @@ def render_registries(registries):
     out.append("{")
     out.append("    LawSource source;")
     out.append("    CurveId curve; ///< COUNT for a law without curve.")
+    out.append(f"    std::array<CurveId, {MAX_LAW_CURVES}> curves; ///< Its named curves (\"curves\"), COUNT after the last.")
     out.append("    std::string_view input; ///< The field the law is a function of (its curve's x).")
     out.append("};")
     out.append(f"inline constexpr std::array<LawInfo, {len(laws)}> kLaws = {{{{")
     for law in laws.values():
         curve = f"CurveId::{'_'.join(law['curve'])}" if law["curve"] else "CurveId::COUNT"
-        out.append(f"    {{LawSource::{LAW_SOURCES[law['source']]}, {curve}, {cpp_string(law['input'])}}},")
+        extra = [f"CurveId::{'_'.join(c)}" for _, c in law["extra_curves"]]
+        extra += ["CurveId::COUNT"] * (MAX_LAW_CURVES - len(extra))
+        out.append(f"    {{LawSource::{LAW_SOURCES[law['source']]}, {curve}, {{{{{', '.join(extra)}}}}}, "
+                   f"{cpp_string(law['input'])}}},")
     out.append("}};")
     out.append("inline constexpr const LawInfo &info(LawId id) { return kLaws[static_cast<std::size_t>(id)]; }")
     out.append("/// A set of laws: bit i is the LawId with index i.")
@@ -1308,10 +1373,12 @@ def render_registries(registries):
     out.append("{")
     out.append("    LawId law;")
     out.append("    ParameterType type;")
+    out.append("    LawOutputId secant; ///< The secant of the same coefficient (itself for a secant): the Picard Jacobian.")
     out.append("};")
     out.append(f"inline constexpr std::array<LawOutputInfo, {len(law_outputs)}> kLawOutputs = {{{{")
     for output in law_outputs.values():
-        out.append(f"    {{LawId::{output['law']}, ParameterType::{output['type']}}},")
+        secant = f"{output['law']}_{output['parameter']}_secant"
+        out.append(f"    {{LawId::{output['law']}, ParameterType::{output['type']}, LawOutputId::{secant}}},")
     out.append("}};")
     out.append("inline constexpr const LawOutputInfo &info(LawOutputId id) { return kLawOutputs[static_cast<std::size_t>(id)]; }")
     out.append("")
@@ -1333,7 +1400,7 @@ def emit_laws(out, types, registries):
     out.append("/**")
     out.append(" * @brief Outputs of the law @p law of the element type @p type at one quadrature point.")
     out.append(" *")
-    out.append(" * @p input is the value of the law's input field at the quadrature point; @p curve_data the curve of the row selecting the law (null without curve); @p source")
+    out.append(" * @p input is the value of the law's input field at the quadrature point, @p inputs those of its extra inputs; @p curve_data the curve of the row selecting the law (null without curve), @p curves its named curves; @p source")
     out.append(" * gives the parameters (as for evaluate_expression); @p outputs receives one value per output of the law,")
     out.append(" * in the order of LawSpec::outputs.")
     out.append(" */")
@@ -1341,7 +1408,9 @@ def emit_laws(out, types, registries):
     out.append("inline void evaluate_law(registry::ElementTypeId type,")
     out.append("                         registry::LawId law,")
     out.append("                         const ParameterValue &input,")
+    out.append("                         [[maybe_unused]] const ParameterValue *inputs,")
     out.append("                         [[maybe_unused]] const CurveData *curve_data,")
+    out.append("                         [[maybe_unused]] const CurveData *const *curves,")
     out.append("                         [[maybe_unused]] Source &source,")
     out.append("                         ParameterValue *outputs)")
     out.append("{")
@@ -1364,6 +1433,11 @@ def emit_laws(out, types, registries):
                 out.append("            [[maybe_unused]] const CurveData &curve = *curve_data;")
             accessor = "input.vector()" if input_field["value"] == V else "input.scalar()"
             out.append(f"            const {CPP_TYPE[input_field['value']]} &{input_field['name']} = {accessor};")
+            for k, (field, _) in enumerate(law["extra_inputs"]):
+                accessor = f"inputs[{k}].vector()" if field["value"] == V else f"inputs[{k}].scalar()"
+                out.append(f"            const {CPP_TYPE[field['value']]} &{field['name']} = {accessor};")
+            for k, cname in enumerate(law["extra_curves"]):
+                out.append(f"            [[maybe_unused]] const CurveData &{cname} = *curves[{k}];")
             for local in law["locals"]:
                 out.append(f"            const auto {local['name']} = {local['code']};")
             for output in law["outputs"]:
@@ -1461,8 +1535,9 @@ def render_formulations(registries):
         if t.laws:
             out.append(f"inline constexpr LawSpec {p}Laws[] = {{")
             for law in t.laws:
+                extra = [str(e) for _, e in law["extra_inputs"]] + ["-1"] * (MAX_LAW_INPUTS - len(law["extra_inputs"]))
                 out.append(f"    {{registry::LawId::{law['name']}, {law['evaluation']}, "
-                           f"{span(f'{p}{law['name']}Outputs', len(law['outputs']))}}},")
+                           f"{span(f'{p}{law['name']}Outputs', len(law['outputs']))}, {{{{{', '.join(extra)}}}}}}},")
             out.append("};")
         out.append("")
 
