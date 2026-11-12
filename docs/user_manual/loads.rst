@@ -68,6 +68,12 @@ fed by a current source, a plasma current density given by the plasma algorithm)
    selection.select(mesh, "MATERIAL", 23, location="elem")
    selection.set_value_on_selection(mesh, "Js", 1.0e6, 2, location="elem")    # J_z = 1 MA/m^2
 
+.. figure:: ../_static/setup/loads_js.png
+   :width: 80%
+   :align: center
+
+   ``Js`` per cell, one vector each (``examples/core_3D_phi``: a winding around the leg of an iron frame).
+
 * For a coil of ``N`` turns carrying ``i``, :math:`J_s = N i / S` (S the cross-section of the winding).
 * The density must be divergence-free (a closed loop, or a conductor crossing the model boundary): a source with
   :math:`\nabla\cdot\mathbf{J}_s\neq0` has no solution in a static magnetic problem.
@@ -88,6 +94,12 @@ Sources of the scalar-potential types
   of a source field T0, at every step: :ref:`el-tphi3d`), a **current through a cut** (``_T`` = +-I on its crossing
   edges: :ref:`el-cuts`); or the load ``VLTG``, a **voltage** around a conductor on its coupled cut DOF. Magnets
   (``M``) as in the other types.
+
+.. figure:: ../_static/setup/loads_fixed_t.png
+   :width: 100%
+   :align: center
+
+   A coil as T fixed on its edges (``examples/coil_core_3D_tphi``, plane y = 0): the edge values of the source field T0' per ampere-turn on the winding and the hole column; the core in the hole keeps its own T.
 
 Current or voltage of a 2D conductor with a terminal and of a coil
 ------------------------------------------------------------------

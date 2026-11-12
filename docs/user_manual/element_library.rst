@@ -148,6 +148,12 @@ Domains
 * ``CIRCUIT_COUPLED_CONDUCTOR`` is not a domain of the 3D element types: in 3D every solid conductor has V. Each
   element type lists its domains (``"domains"`` in the JSON); the model check rejects a row with another one.
 
+.. figure:: ../_static/setup/domains_examples.png
+   :width: 100%
+   :align: center
+
+   The regions of the scalar-potential examples (:doc:`../examples/formulations`): one TYPE row per region, each with its domain (3D: the air hidden, the conductors cut in half).
+
 Notation
 ~~~~~~~~
 
@@ -574,6 +580,13 @@ Setup
      :math:`\mathbf{T}_0` is normal to the planes :math:`z_1`, :math:`z_2`), so H stays tangentially continuous. A
      square winding uses :math:`\max(|x|,|y|)` in place of :math:`r` (exact on a Cartesian grid).
 
+     .. figure:: ../_static/setup/loads_fixed_t.png
+        :width: 90%
+        :align: center
+
+        ``examples/coil_core_3D_tphi``, plane y = 0: the edge values of T0' per ampere-turn on the winding (falling
+        across it) and the hole column (uniform), zero on the core edges, the gradient's correction around the core.
+
      *A conductor in the hole* (a core, a vessel) has its own T, which cannot be fixed. Move :math:`\mathbf{T}_0` out
      of it by a gradient: :math:`\mathbf{T}_0'=\mathbf{T}_0-\nabla g` with :math:`g=T_h\,z\,\chi`, :math:`T_h` the
      uniform value in the hole and :math:`\chi` = 1 on the nodes of the conductor's cells, 0 elsewhere. On the edges
@@ -639,6 +652,18 @@ a conductor carrying :math:`I_z`, a strip from the conductor to the boundary.
    (carried there by T), so the boundary nodes on :math:`\Sigma` take the value of the side away from the layer and the
    nodes on the far face of the layer that of the layer side (``norris_wire``: :math:`\phi=-I\theta/2\pi`, the nodes
    on the cut ray at :math:`\theta=2\pi`, those above it near 0).
+
+.. figure:: ../_static/setup/couplings_cut.png
+   :width: 80%
+   :align: center
+
+   A 3D cut (``examples/ring_3D_tphi``): the layer spanning the hole, planar edges ``_T`` = 0, crossing edges coupled (CP 1) with the corners of the two faces labelled (CP 2, 3).
+
+.. figure:: ../_static/setup/cut_wire_2d.png
+   :width: 100%
+   :align: center
+
+   A 2D cut (``examples/wire_2D_tphi``): the strip from the wire to the box; the crossing edges carry +-I according to their own orientation (steps 3-4), the edges along the strip zero; on the box :math:`\phi=-I\theta/2\pi` with the jump across the strip (step 6).
 
 *Several conductors.* Each conductor with a net current has its own cut, with its own coupling ids (1, 2, 3 for the
 first, 4, 5, 6 for the second, ...); the cuts must not cross each other. Cuts are exactly what makes the air simply

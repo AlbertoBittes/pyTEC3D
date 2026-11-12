@@ -28,6 +28,9 @@ MU0 = 4e-7 * np.pi
 QUIET = {{"-ksp_monitor": None, "-ksp_view": None, "-ksp_converged_reason": None, "-log_view": None,
          "-ksp_monitor_true_residual": None, "-ksp_monitor_solution": None}}   # no PETSc reports in the notebook
 
+import sys
+sys.path.insert(0, os.getcwd())               # docs/tutorials: the plotting helpers of the notebooks
+from setup_views import view                  # regions, selected nodes and edges of a setup step
 EXAMPLES = Path("../../examples").resolve()
 WORK = Path(tempfile.mkdtemp(prefix="pytec3d_{name}_"))
 for case in {cases}:
@@ -201,6 +204,41 @@ def run(ni_list, bh=True, hs_given=False, log="core.log"):
         solver.close()
     return out
 ''')
+    nb.md(r'''
+### The setup on the mesh
+
+Before running, check each step where it lands: ``Js`` on the coil cells (one vector per cell), then the gauge of
+$\mathbf{H}_s$ on the plane y = 0 (tree and box edges fixed, the cotree edges free).
+''')
+    nb.code('''
+solver = new_solver("core_3D_phi", "look.log")
+grid = solver.model.mesh
+c = meshes.cell_centroids(grid)
+selection.select(grid, "TYPE", 3, location="elem")
+coil = selection.selected_ids(grid, "elem")
+selection.set_value_on_selection(grid, "Js", coil_current(c, np.isin(np.arange(len(c)), coil))[coil], None, location="elem")
+(view(grid, regions={2: "iron", 3: "coil"})
+ .vectors(c[coil], meshes.array_values(grid, "Js", "elem")[coil], label="Js per coil cell (about +y)")
+ .show("set_value_on_selection(grid, 'Js', j_cells, None, location='elem')",
+       view=[(4.0, -4.0, 3.0), (0.3, 0.0, 0.0), (0, 0, 1)]))
+
+selection.select_all(grid); selection.nsel_ext(grid)
+box = selection.selected_ids(grid)
+info = tree_gauge.tree_gauge(grid, array_name="_Hs")
+selection.set_value_on_selection(grid, "_Hs", 0.0, 2)
+xyz = meshes.points(grid)
+mids, start, end = tree_gauge.edges(grid)
+tree = meshes.array_values(grid, "TREE", "node")[mids] == 1
+plane = (np.abs(xyz[start, 1]) < 1e-9) & (np.abs(xyz[end, 1]) < 1e-9)
+on_box = np.isin(mids, box)
+(view(grid, edges=False)
+ .edges(start[plane & ~tree & ~on_box], end[plane & ~tree & ~on_box], "#c3cbd3", "cotree: free", width=1)
+ .edges(start[plane & tree & ~on_box], end[plane & tree & ~on_box], "#1f5fa8", "tree: _Hs = 0")
+ .edges(start[plane & on_box], end[plane & on_box], "#c0392b", "box: _Hs = 0", width=4)
+ .show(f"the Hs gauge on the plane y = 0 ({info['num_tree']} tree edges in all)", view="xz"))
+with quietly():
+    solver.close()
+''')
     nb.md("""
 ## The magnetization curve of the frame
 
@@ -341,6 +379,39 @@ for t, color, label, opacity in ((2, "peru", "ring", 0.5), (3, "lightblue", "cut
     p.add_mesh(part.extract_feature_edges(), color="black")
 p.add_points(xyz[mids[crossing]], color="red", point_size=10, render_points_as_spheres=True, label="crossing edges")
 p.add_legend(); p.camera_position = [(3.0, -3.5, 2.5), (0, 0, 0), (0, 0, 1)]; p.show()
+with quietly():
+    solver.close()
+''')
+    nb.md(r'''
+The gauges of the ring and the coupling of the cut, as ``ring()`` below sets them: ``_T`` = 0 on the midside nodes of
+the ring surface, ``_PHI`` = 0 at its inner corner nodes, and the CP ids of the cut: 1 on the crossing midside nodes
+(the coupled DOF), 2 and 3 on the corner nodes of the two faces of the layer (the orientation of each crossing edge).
+''')
+    nb.code('''
+solver = new_solver("ring_3D_tphi", "look2.log")
+grid = solver.model.mesh
+xyz = meshes.points(grid)
+selection.select(grid, "TYPE", 2, location="elem"); selection.nsle(grid)
+selection.select(grid, "TYPE", [1, 3], location="elem"); selection.nsle(grid, mode="r")
+selection.select(grid, "MidsideNodes", 1, mode="r")
+surface = selection.selected_ids(grid)
+selection.select(grid, "TYPE", 2, location="elem"); selection.nsle(grid)
+selection.select(grid, "TYPE", [1, 3], location="elem"); selection.nsle(grid, mode="u")
+selection.select(grid, "MidsideNodes", 0, mode="r")
+inner = selection.selected_ids(grid)
+selection.select(grid, "TYPE", 3, location="elem")
+mids, start, end = tree_gauge.edges(grid, selection.selected_ids(grid, "elem"))
+cross = ~np.isclose(xyz[start, 2], xyz[end, 2]) & (xyz[mids, 1] >= -1e-9)    # (the half y >= 0 is shown)
+corners = np.unique(np.concatenate((start, end)))
+half = lambda ids: ids[xyz[ids, 1] >= -1e-9]
+corners = half(corners)
+(view(grid, regions={2: "conductor", 3: "layer"}, clip=dict(normal="y", origin=(0, 0, 0), invert=False))
+ .nodes(half(surface), "#c0392b", "_T = 0: ring surface edges", size=6)
+ .nodes(half(inner), "#27ae60", "_PHI = 0: inner corner nodes", size=12)
+ .edges(start[cross], end[cross], "#8e44ad", "crossing edges: CP_0 = 1", arrows=True)
+ .nodes(corners[np.isclose(xyz[corners, 2], 0.0)], "#1f5fa8", "face c = 0: CP_0 = 2", size=9)
+ .nodes(corners[np.isclose(xyz[corners, 2], 0.25)], "#d35400", "face c = 1: CP_0 = 3", size=9)
+ .show("the gauges and the cut of the ring (half shown)", view=[(2.2, -3.2, 2.0), (0, 0.2, 0), (0, 0, 1)]))
 with quietly():
     solver.close()
 ''')
@@ -749,6 +820,29 @@ w30 = wire(30)
 print(f"n = 30: Q = {w30['Q']:.3f} J/m per cycle, Norris {norris(F):.3f} J/m, ratio {w30['ratio']:.3f}; "
       f"Newton iterations per step: mean {np.mean(w30['newton']):.1f}, max {max(w30['newton'])}")
 ''')
+    nb.md(r'''
+The cut of the wire as ``wire()`` sets it: the strip of ``CUT_LAYER`` cells, the crossing edges with their sign (the
+current I from the ray side to the other, in each edge's own orientation), the edges along the strip at zero, and the
+potential of the box with its jump across the strip.
+''')
+    nb.code('''
+solver = new_solver("wire_2D_tphi", "look.log")
+grid = solver.model.mesh
+xyz = meshes.points(grid)
+on_ray = np.isclose(xyz[:, 1], 0.0) & (xyz[:, 0] > 0.0)
+selection.select(grid, "TYPE", 3, location="elem")
+mids, start, end = tree_gauge.edges(grid, selection.selected_ids(grid, "elem"))
+cross = on_ray[start] != on_ray[end]
+plus = cross & on_ray[start]
+minus = cross & ~on_ray[start]
+(view(grid, regions={1: "air", 2: "conductor", 3: "layer"})
+ .edges(start[plus], end[plus], "#c0392b", "crossing, oriented away from the ray: _T = +I", arrows=True)
+ .edges(start[minus], end[minus], "#1f5fa8", "crossing, oriented towards the ray: _T = -I", arrows=True)
+ .edges(start[~cross], end[~cross], "black", "along the strip: _T = 0", width=4)
+ .show("the cut of the wire", bounds=(0.8, 2.05, -0.45, 0.75, 0, 0)))
+with quietly():
+    solver.close()
+''')
     nb.md(r"""
 The current fronts: at the first peak (t = T/4) the current flows in a shell at the surface, $J\approx J_c$ for
 $R\sqrt{1-F}<r<R$ in the critical state (dotted); at the zero crossing (t = T/2) the current of the previous half
@@ -822,6 +916,30 @@ the law `power_law_b`, $E=E_0(J/s(|B|))$, two tables (`set_power_law(mat, table,
 
 We run the example macro as it is (`examples/bulk_2D_tphi_axisym/macro.py`) and read its output files.
 """)
+    nb.md(r'''
+The gauges of the bulk on the two kinds of steps (near the corner r = 10 mm, z = 5 mm):
+''')
+    nb.code('''
+solver = new_solver("bulk_2D_tphi_axisym", "look.log")
+grid = solver.model.mesh
+selection.select(grid, "TYPE", 2, location="elem"); selection.nsle(grid)
+selection.select(grid, "MidsideNodes", 1, mode="r")
+all_edges = selection.selected_ids(grid)
+selection.select(grid, "TYPE", 1, location="elem"); selection.nsle(grid, mode="r")
+surface = selection.selected_ids(grid)
+selection.select(grid, "TYPE", 2, location="elem"); selection.nsle(grid)
+selection.select(grid, "TYPE", 1, location="elem"); selection.nsle(grid, mode="u")
+selection.select(grid, "MidsideNodes", 0, mode="r")
+inner = selection.selected_ids(grid)
+corner = (0.005, 0.0125, 0.0, 0.0065, 0, 0)
+view(grid, regions={1: "air", 2: "conductor"}).nodes(all_edges, "#c0392b", "_T = 0 (every bulk edge)").show(
+    "static step: _T = 0 on every edge of the bulk, _PHI free inside", bounds=corner)
+(view(grid, regions={1: "air", 2: "conductor"}).nodes(surface, "#c0392b", "_T = 0 (surface edges)")
+ .nodes(inner, "#27ae60", "_PHI = 0 (inner corner nodes)")
+ .show("transient steps: n x T = 0 on the surface, _PHI = 0 inside", bounds=corner))
+with quietly():
+    solver.close()
+''')
     nb.code('''
 import csv, runpy
 shutil.copy("bulk_2D_tphi_axisym_model_data.json", "model_data.json")    # the macro reads model_data.json

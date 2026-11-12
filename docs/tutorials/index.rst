@@ -109,3 +109,7 @@ plots are rendered off screen):
    python build_tutorials.py ..                 # the other notebooks (or name one: stranded_coil_iron, coil_3d_sector, edge_elements)
    python build_plasma_tutorials.py ..          # iter_equilibrium, iter_evolution, iter_3d_halo (25 min)
    python build_formulation_tutorials.py ..     # scalar_potential, tphi_cuts, superconductors (5 min)
+
+The notebooks draw each setup step on the mesh (regions, selected nodes, fixed edges, couplings) with the small
+pyvista helper ``docs/tutorials/setup_views.py``; use it in your own notebooks to check a setup before loading the
+model.

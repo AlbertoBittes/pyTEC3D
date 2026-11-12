@@ -54,8 +54,21 @@ Lines and some Bezier cells are also read. Rules:
 * Cells whose node ordering is inverted are reoriented on import (the log counts them); degenerate and distorted
   cells are reported in the *Mesh quality* table.
 
+.. figure:: ../_static/setup/mesh_edge_dofs.png
+   :width: 70%
+   :align: center
+
+   A HEX20 cell: the 8 corner nodes carry the nodal (Lagrange) DOFs, the 12 midside nodes one DOF each of an edge field (A of ``AVA3D_edge``, T, Hs), stored in component 2 of its Dirichlet array. An edge value is a circulation along the edge in the solver's orientation, from the end point with the lexicographically smaller coordinates to the larger (arrows); :func:`pytec3d.tree_gauge.edges` lists the edges with that orientation.
+
+
 The arrays of a model
 ---------------------
+
+.. figure:: ../_static/setup/mesh_regions.png
+   :width: 100%
+   :align: center
+
+   The ``TYPE`` cell array (here equal to ``MATERIAL``) of two examples: each id selects a row of the model data (element type, domain, order) and of the materials.
 
 Cell arrays
 ~~~~~~~~~~~

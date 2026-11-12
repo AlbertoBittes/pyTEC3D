@@ -20,6 +20,12 @@ The pattern
    selection.nsle(mesh)                                         # 2. select their nodes
    selection.set_value_on_selection(mesh, "CP_0", 1)            # 3. write a value on the selected nodes
 
+.. figure:: ../_static/setup/selection_steps.png
+   :width: 100%
+   :align: center
+
+   The pattern on ``examples/coil_2D_avolt``: (1) the cells of MATERIAL 23, (2) their nodes, (3) the boundary nodes of the whole mesh. Each step replaces the selection of its location (mode ``"s"``).
+
 Every function takes the ``location``: ``"node"`` (default) or ``"elem"``. **Forgetting** ``location="elem"`` when
 selecting by a cell array (``TYPE``, ``MATERIAL``, ``CONSTANT``...) or writing a cell array (``Js``, ``TYPE``...) is the
 most common mistake: the function then looks for a point array of that name and raises
@@ -142,6 +148,12 @@ The nodes on a cylinder or a sphere, or on a sector face:
    selection.select_pos(mesh, 0, (1 - 1e-5, 1 + 1e-5), coordinate_system=cyl)                 # r = 1
    selection.select_pos(mesh, 1, (30 - 1e-5, 30 + 1e-5), coordinate_system=cyl)               # theta = 30 deg
    selection.select_pos(mesh, 0, (100 - 0.1, 100 + 0.1), coordinate_system=SphericalCoordinateSystem())
+
+.. figure:: ../_static/setup/selection_cylindrical.png
+   :width: 80%
+   :align: center
+
+   Selections in the cylindrical system about y on the 30 degree sector of ``examples/coil_3D_avoltemf`` (seen from above): coordinate 1 is theta in degrees (from +x towards -z), coordinate 0 the radius.
 
 A region defined geometrically, then turned into a material and an element type (before the model is loaded):
 

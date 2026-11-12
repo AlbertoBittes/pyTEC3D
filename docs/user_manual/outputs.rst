@@ -53,6 +53,12 @@ Python right away:
        state (:math:`|E|` against :math:`E_c`), the voltage along a conductor. Not in the static scalar potential
        type (``PHI3D_nodal``).
 
+.. figure:: ../_static/setup/outputs_ring.png
+   :width: 100%
+   :align: center
+
+   Output arrays after a step of ``examples/ring_3D_tphi`` (t = 10 ms after a 1 T field step): ``Jt`` in the ring and B_z on a plane. Element arrays (``B``, ``H``, ``Jt``, ``E``) are cell means; nodal arrays are projected.
+
 How these fields are computed (projection, quadrature mean, time derivatives of the time scheme) is explained in
 :ref:`theory-postprocessing`.
 

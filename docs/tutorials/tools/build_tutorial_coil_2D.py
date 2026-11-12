@@ -55,6 +55,10 @@ import pytec3d
 from pytec3d import Solver, selection, element_library
 from pytec3d import mesh as meshes
 
+import sys
+sys.path.insert(0, os.getcwd())                         # docs/tutorials: setup_views, the plots of the setup steps
+from setup_views import view
+
 CASE = Path("../../examples/coil_2D_avolt").resolve()  # the example of the repository
 WORK = Path(tempfile.mkdtemp(prefix="pytec3d_tutorial_"))   # a scratch working directory
 for name in ("coil_2D_avolt.vtu", "model_data.json"):
@@ -168,6 +172,17 @@ print("boundary nodes:", selection.selected_ids(mesh, "node").size)
 """)
 
 md("""
+Check the condition on the mesh: the regions of the model (TYPE) and the nodes where `_A` (component 2, A_z) is now
+fixed. `setup_views.view` (in `docs/tutorials`) is a small pyvista helper of these notebooks.
+""")
+
+code("""
+fixed = np.flatnonzero(np.isfinite(meshes.array_values(mesh, "_A", "node")[:, 2]))
+view(mesh, regions={21: "air", 23: ("circuit-coupled ring", "#c0703a"), 24: ("solid ring", "#e39a3b")}).nodes(fixed, "#c0392b", "_A[2] = 0").show(
+    "A_z = 0 on the external boundary (the axis x = 0 included)")
+""")
+
+md("""
 ## 5. The terminal of the circuit-coupled conductor: a DOF coupling
 
 The V of a 2D circuit-coupled conductor is a single value for the whole cross-section. We select the cells of the ring,
@@ -183,6 +198,16 @@ selection.set_value_on_selection(mesh, "CP_0", 1)
 solver.model.add_dof_couplings({1: ["V"]})
 master = int(selection.selected_ids(mesh, "node")[0])
 print("nodes of the ring:", selection.selected_ids(mesh, "node").size, "- master node:", master)
+""")
+
+code("""
+group = np.flatnonzero(meshes.array_values(mesh, "CP_0", "node") == 1)
+ring = meshes.cell_centroids(mesh)[meshes.array_values(mesh, "MATERIAL", "elem") == 23]
+(view(mesh, regions={21: "air", 23: ("circuit-coupled ring", "#c0703a"), 24: ("solid ring", "#e39a3b")})
+ .nodes(group, "#1f5fa8", "CP_0 = 1: one V for the whole ring")
+ .nodes([master], "#8e44ad", "master node: AMPS and _V here", size=20)
+ .show("the terminal of the circuit-coupled conductor",
+       bounds=(ring[:, 0].min() - 0.3, ring[:, 0].max() + 0.3, ring[:, 1].min() - 0.3, ring[:, 1].max() + 0.3, 0, 0)))
 """)
 
 md("""

@@ -24,6 +24,10 @@ from pytec3d import mesh as meshes
 pv.set_jupyter_backend("static")          # images in the notebook; "trame" gives interactive views
 pytec3d.set_log_level("ERROR")            # warnings ("No loads" at every voltage-driven step...) stay in the job log
 
+import sys
+sys.path.insert(0, os.getcwd())               # docs/tutorials: setup_views, the plots of the setup steps
+from setup_views import view
+
 CASE = Path("../../examples/{case}").resolve()
 WORK = Path(tempfile.mkdtemp(prefix="pytec3d_{case}_"))
 for name in {files}:
@@ -75,6 +79,28 @@ coil = data["constants"]["1"]
 print(json.dumps(coil))
 R, N = coil["resistance"], coil["turns"]
 print(f"R = {R} Ohm, N = {N:.0f} turns: a 1500 V source drives {1500 / R:.0f} A, i.e. {1500 / R * N / 1e3:.0f} kA-turns")
+''')
+    nb.md("""
+The setup on the mesh, as `run()` below makes it: the regions, A_z = 0 on the boundary, and the coil terminal (CP_0 = 1
+on the coil nodes, the master node where `_VOLT` is set).
+""")
+    nb.code('''
+look = Solver(log_file="look.log")
+with quietly():
+    look.read_model("coil_2D_avoltemf_ferr.vtu")
+    look.model.read_json("model_data.json")
+grid = look.model.mesh
+selection.select_all(grid); selection.nsel_ext(grid)
+boundary = selection.selected_ids(grid)
+selection.select(grid, "MATERIAL", 23, location="elem"); selection.nsle(grid)
+terminal = selection.selected_ids(grid)
+(view(grid, regions={21: "air", 23: "coil", 24: ("passive ring", "#c0703a"), 26: "iron"})
+ .nodes(boundary, "#c0392b", "_A[2] = 0: the boundary", size=6)
+ .nodes(terminal, "#1f5fa8", "CP_0 = 1: one VOLT, one EMF")
+ .nodes(terminal[:1], "#8e44ad", "master node: _VOLT = 1500 V", size=20)
+ .show("coil_2D_avoltemf_ferr: regions, boundary condition, coil terminal"))
+with quietly():
+    look.close()
 ''')
     nb.md("""
 ## One function for the whole analysis
@@ -300,6 +326,30 @@ selection.select(mesh, "ID", int(selection.selected_ids(mesh, "node")[0]))
 selection.set_value_on_selection(mesh, "_V", 0.0)
 ''')
     nb.md("""
+The setup on the mesh: the far-field and axis conditions (the components of `_A` fixed), the periodic pairs (`CP_1`:
+the face theta = 0 and its image), the coil terminal (`CP_0 = 1`), and the winding direction T = (0, 1, 0) of the
+coil cells in their cylindrical system.
+""")
+    nb.code('''
+fixed = np.isfinite(meshes.array_values(mesh, "_A", "node"))
+cp1 = meshes.array_values(mesh, "CP_1", "node") > 0
+on_face0 = np.abs(cyl.to_local(meshes.points(mesh))[:, 1]) < 1e-5
+(view(mesh, regions={21: "air", 23: "coil", 24: ("passive ring", "#c0703a")})
+ .nodes(fixed.all(axis=1), "#c0392b", "_A = 0, all components (far field)", size=5)
+ .nodes(fixed.any(axis=1) & ~fixed.all(axis=1), "#27ae60", "_A x, z = 0 (the axis)", size=7)
+ .nodes(cp1 & on_face0, "#1f5fa8", "CP_1: the face theta = 0", size=4)
+ .nodes(cp1 & ~on_face0, "#8e44ad", "CP_1: its image at 30 degrees", size=4)
+ .show("boundary conditions and periodic pairs of the sector", view=[(0.6, 3.2, 0.9), (0.45, 0.0, -0.1), (1, 0, 0)]))
+c = meshes.cell_centroids(mesh)
+coil_cells = np.flatnonzero(meshes.array_values(mesh, "MATERIAL", "elem") == 23)
+t_global = cyl.vector_components_to_global(np.tile([0.0, 1.0, 0.0], (len(coil_cells), 1)), c[coil_cells])
+(view(mesh, regions={23: "coil"})
+ .nodes(meshes.array_values(mesh, "CP_0", "node") == 1, "#1f5fa8", "CP_0 = 1: the coil terminal", size=5)
+ .nodes([master], "#8e44ad", "master node", size=18)
+ .vectors(c[coil_cells], t_global, "#c0392b", "T = (0, 1, 0) in the cylindrical system 1", factor=0.04)
+ .show("the coil: terminal and winding direction", view=[(1.5, 0.3, 1.0), (0.48, -0.5, -0.12), (0, 1, 0)]))
+''')
+    nb.md("""
 ## A current step
 
 The coil current jumps from 0 to 100 A at t = 0 (`CURR` on the master node; it is the current of the whole coil) and
@@ -457,8 +507,46 @@ pl.show()
 The 30 degree sector: the coil (lower ring) and the passive ring (upper ring) in the air box. The macro sets the
 boundary conditions on this grid: cyclic symmetry between the faces at 0 and 30 degrees (edge values are scalars: no
 frame rotation), tangential A = 0 on the outer boundary (component 2 of `_A` on the midside nodes), and the
-tree-cotree gauge (`tree_gauge.tree_gauge`), which writes A = 0 on the tree edges into `_A`.
-
+tree-cotree gauge (`tree_gauge.tree_gauge`), which writes A = 0 on the tree edges into `_A`. The same steps here, on
+a copy of the model, to see them on the mesh:
+""")
+    nb.code('''
+import vtk
+from pytec3d import YAxisCylindricalCoordinateSystem, tree_gauge
+cyl = YAxisCylindricalCoordinateSystem()
+look = Solver(log_file="look.log")
+with quietly():
+    look.read_model("coil_3D_avoltemf_edge.vtu")
+    look.model.read_json("model_data.json")
+m = look.model.mesh
+meshes.remove_array(m, "CP_1"); meshes.add_array(m, "CP_1", dtype=vtk.VTK_INT)
+selection.select_pos(m, 1, (-1e-5, 1e-5), coordinate_system=cyl)
+with quietly():
+    look.model.periodic_boundaries(cyl, dy=30, array_name="CP_1", variables=("A", "V"))
+selection.select_all(m)
+selection.select_pos(m, 0, (1 - 1e-5, 1 + 1e-5), coordinate_system=cyl)
+selection.select_pos(m, 2, (1 - 1e-5, 1 + 1e-5), mode="a", coordinate_system=cyl)
+selection.select_pos(m, 2, (-1 - 1e-5, -1 + 1e-5), mode="a", coordinate_system=cyl)
+selection.set_value_on_selection(m, "_A", 0.0, 2)
+far = selection.selected_ids(m)
+with quietly():
+    info = tree_gauge.tree_gauge(m, periodic_point_coupling="CP_1")
+xyz = meshes.points(m)
+midside = meshes.array_values(m, "MidsideNodes", "node") == 1
+view(m, regions={21: "air", 23: "coil", 24: ("passive ring", "#c0703a")}).nodes(
+    far[midside[far]], "#c0392b", "_A[2] = 0: midside nodes of the far faces", size=4).show(
+    "n x A = 0 on the far faces (edge DOFs on the midside nodes)", view=[(0.6, 3.2, 0.9), (0.45, 0.0, -0.1), (1, 0, 0)])
+mids, start, end = tree_gauge.edges(m)
+tree = meshes.array_values(m, "TREE", "node")[mids] == 1
+face = (np.abs(xyz[start, 2]) < 1e-9) & (np.abs(xyz[end, 2]) < 1e-9)
+(view(m, edges=False)
+ .edges(start[face & ~tree], end[face & ~tree], "#c3cbd3", "cotree edges: free", width=1)
+ .edges(start[face & tree], end[face & tree], "#1f5fa8", "tree edges: _A = 0")
+ .show(f"tree_gauge(): {info['num_tree']} tree edges; shown: the face theta = 0", view="xy"))
+with quietly():
+    look.close()
+''')
+    nb.md("""
 ## 2. Run the examples
 
 The macros are run as they are, each in its own copy of the example folder. `coil_3D_avoltemf` is the same model with

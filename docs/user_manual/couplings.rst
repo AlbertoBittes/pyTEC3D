@@ -33,6 +33,12 @@ loads and Dirichlet values of a terminal on the master node:
 
    master = selection.selected_ids(mesh, "node")[0]           # the lowest id of the selection
 
+.. figure:: ../_static/setup/couplings_terminal.png
+   :width: 60%
+   :align: center
+
+   A coil terminal (``examples/coil_2D_avoltemf``): CP_0 = 1 on all the coil nodes; the master node (lowest id) carries the loads and Dirichlet values of the group.
+
 Rules:
 
 * every positive id of a ``CP_k`` array must have an entry in ``dof_couplings``;
@@ -63,6 +69,12 @@ nodes of the two faces of the layer get two more ids, which only give that orien
    selection.set_value_on_selection(mesh, "CP_0", 3)
    solver.model.add_dof_couplings({1: ["T"], 2: ["T"], 3: ["T"]})
 
+.. figure:: ../_static/setup/couplings_cut.png
+   :width: 85%
+   :align: center
+
+   The cut of ``examples/ring_3D_tphi``: the CUT_LAYER cells spanning the hole, ``_T`` = 0 on the planar edges, the crossing edges coupled on one DOF (CP_0 = 1, the ring current), the corners of the two faces labelled 2 and 3.
+
 Its value is the current from the face 2 side to the face 3 side; ``VLTG`` on one coupled midside node is the voltage
 around the conductor. Each conductor takes its own three ids; conductors in series share them. Example
 ``examples/ring_3D_tphi``.
@@ -87,6 +99,12 @@ Periodic (cyclic) boundaries
    # Nodal vector potential: rotate the frames of the image face by the sector angle
    selection.select_pos(mesh, 1, (30 - 1e-5, 30 + 1e-5), coordinate_system=cyl)
    selection.set_value_on_selection(mesh, "node_angles", 30.0, 2)
+
+.. figure:: ../_static/setup/couplings_periodic.png
+   :width: 75%
+   :align: center
+
+   Cyclic symmetry of ``examples/coil_3D_avoltemf_edge`` (seen from above): every node of the face theta = 0 (corner and midside) and its image at 30 degrees share a CP_1 id.
 
 Each selected node is moved by ``(dx, dy, dz)`` in the coordinates of the coordinate system (``dy = 30`` turns by 30
 degrees in a cylindrical system; a Cartesian system gives a translation), matched with the nearest node (within

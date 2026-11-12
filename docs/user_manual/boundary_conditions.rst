@@ -50,6 +50,12 @@ Conditions on the vector potential
      - :math:`A_z=0` / :math:`A_\theta=0`
      - component 2 of ``_A``
 
+.. figure:: ../_static/setup/bc_2d_far_field.png
+   :width: 55%
+   :align: center
+
+   2D (``examples/coil_2D_avolt``): A_z = 0 on every boundary node, the axis included.
+
 In 2D the only DOF is component 2 (A_z, or A_theta in axisymmetry): ``A_z = 0`` on a boundary makes it a flux line
 (B tangent); a free boundary is a symmetry plane with B normal to it.
 
@@ -88,6 +94,12 @@ nodes** in **component 2** of ``_A``. Fixing it on the midside nodes of a face f
 that face, :math:`\mathbf{n}\times\mathbf{A}=0` (far field and "B tangent" symmetry planes). The values of ``_A`` on
 corner nodes and the other components are not used. No nodal frame rotation is needed. Restrict a selection to the
 midside nodes with ``selection.select(mesh, "MidsideNodes", 1, mode="r")``.
+
+.. figure:: ../_static/setup/bc_edge_tree.png
+   :width: 100%
+   :align: center
+
+   Edge elements (``examples/coil_3D_avoltemf_edge``): left, the Dirichlet value on the midside nodes of the far faces; right, the tree of the gauge (``TREE`` array) on the face theta = 0. The tree spans every node once without closing a loop: fixing its edges removes the gradients from A without constraining B.
 
 Gauging
 -------
@@ -167,9 +179,21 @@ surface (``tree_gauge.tree_gauge(..., array_name="_T")`` over the conductor cell
 with a net current needs a cut (:ref:`el-cuts`); a coil is ``_T`` fixed on the edges of its winding and hole
 (:ref:`el-tphi3d`).
 
+.. figure:: ../_static/setup/bc_tphi_gauges.png
+   :width: 100%
+   :align: center
+
+   T-phi (``examples/ring_3D_tphi``): left, the applied field as the total potential on the box; right, the gauges of the ring (half shown): ``_T`` = 0 on its surface edges, ``_PHI`` = 0 at its inner corner nodes.
+
 *Static steps* (T-phi): at rest :math:`\mathbf{H}=-\nabla\phi` in the conductors too. On a static step set ``_T`` = 0
 on every conductor edge and ``_PHI`` = NaN at the inner nodes, then restore the transient gauges before the next
 transient step (example ``bulk_2D_tphi_axisym``). The solver does not do it for you.
+
+.. figure:: ../_static/setup/bc_static_transient.png
+   :width: 100%
+   :align: center
+
+   Static and transient gauges of a T-phi conductor (``examples/bulk_2D_tphi_axisym``, near a corner of the bulk): on a static step T is fixed to zero everywhere in the conductor and PHI is free; on the transient steps T is free inside, zero on the surface, and PHI is fixed inside.
 
 *The source field* (``PHI3D_nodal``): a tree gauge of ``_Hs`` over all the cells, rooted on the boundary, and
 :math:`\mathbf{n}\times\mathbf{H}_s=0` on the boundary, always (also without sources):
@@ -180,6 +204,12 @@ transient step (example ``bulk_2D_tphi_axisym``). The solver does not do it for 
    selection.nsel_ext(mesh)                                   # the boundary nodes: the roots of the tree
    tree_gauge.tree_gauge(mesh, array_name="_Hs")              # _Hs = 0 on the tree edges
    selection.set_value_on_selection(mesh, "_Hs", 0.0, 2)      # n x Hs = 0 on the boundary edges
+
+.. figure:: ../_static/setup/bc_hs_gauge.png
+   :width: 80%
+   :align: center
+
+   The gauge of Hs in ``examples/core_3D_phi``, on the plane y = 0: tree edges and box edges fixed to zero, the cotree edges free (the unknowns of Hs).
 
 or ``_Hs`` given on every edge (the circulations of a known source field, :func:`pytec3d.tree_gauge.edges`,
 :func:`pytec3d.tree_gauge.edge_circulations`), which removes the Hs unknowns.
