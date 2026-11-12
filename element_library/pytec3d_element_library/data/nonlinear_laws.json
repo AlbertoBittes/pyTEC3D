@@ -24,6 +24,7 @@
         "bh_curve_h": {
             "element_types": [
                 "TPHI3D_edge",
+                "TPHI2D_edge",
                 "PHI3D_nodal"
             ],
             "source": "mat",

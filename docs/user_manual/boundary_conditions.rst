@@ -4,8 +4,8 @@ Boundary Conditions
 Dirichlet values
 ----------------
 
-Every DOF field ``F`` has a point array ``_F`` of the same shape (``_A``: 3 components; ``_V``, ``_VOLT``,
-``_EMF``: 1). At every solve:
+Every DOF field ``F`` has a point array ``_F`` of the same shape (``_A``, ``_T``, ``_Hs``: 3 components; ``_V``,
+``_VOLT``, ``_EMF``, ``_PHI``: 1; the edge fields use component 2 on the midside nodes). At every solve:
 
 * ``NaN`` (the default) leaves the component free;
 * a number fixes it to that value.
@@ -127,6 +127,66 @@ Electric potentials
 * ``_VOLT`` applies to the VOLT field of the stranded coils only: it has **no effect** on conductors, whose field is
   V.
 * With the ``_timint`` element types the electric Dirichlet values are time integrals ([V s]).
+
+Scalar potentials: PHI, T, Hs
+------------------------------
+
+The scalar-potential types (``PHI3D_nodal``, ``TPHI3D_edge``, ``TPHI2D_edge``; :ref:`el-phi3d`, :ref:`el-tphi3d`)
+have :math:`\mathbf{H}=-\nabla\phi` outside the conductors (plus :math:`\mathbf{H}_s` or :math:`\mathbf{T}`), so the
+conditions are the dual of those on A:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 32 30 38
+
+   * - Situation
+     - Condition
+     - How
+   * - Free outer boundary (truncation)
+     - :math:`\mathbf{n}\cdot\mathbf{B}=0` (flux wall: B tangent)
+     - nothing on ``_PHI`` (natural), but **fix** ``_PHI`` **on one node**: :math:`\phi` is defined up to a
+       constant
+   * - Applied field :math:`\mathbf{H}_0` (uniform, or any known exterior field)
+     - the total potential on the boundary
+     - ``_PHI`` = :math:`-\mathbf{H}_0\cdot\mathbf{x}` (+ the exterior potential of the model's sources when known),
+       one value per boundary node (``set_value_on_selection`` with an array)
+   * - Symmetry plane, B **tangent** to it
+     - natural
+     - nothing
+   * - Symmetry plane, B **normal** to it
+     - :math:`\phi` constant
+     - ``_PHI`` = 0 (or the value of the applied potential) on the plane
+   * - 2D axisymmetric axis
+     - natural (:math:`B_r=0`)
+     - nothing
+
+*In the conductors* (T-phi): :math:`\mathbf{n}\times\mathbf{T}=0` on the conductor surface, ``_T`` = 0 on the
+midside nodes of its surface edges (component 2), and a gauge inside: ``_PHI`` = 0 at the corner nodes strictly inside
+the conductor (first-order :math:`\phi`: its gradients are in the edge space of T), or a tree gauge of T rooted on the
+surface (``tree_gauge.tree_gauge(..., array_name="_T")`` over the conductor cells) with :math:`\phi` free. A conductor
+with a net current needs a cut (:ref:`el-cuts`); a coil is ``_T`` fixed on the edges of its winding and hole
+(:ref:`el-tphi3d`).
+
+*Static steps* (T-phi): at rest :math:`\mathbf{H}=-\nabla\phi` in the conductors too. On a static step set ``_T`` = 0
+on every conductor edge and ``_PHI`` = NaN at the inner nodes, then restore the transient gauges before the next
+transient step (example ``bulk_2D_tphi_axisym``). The solver does not do it for you.
+
+*The source field* (``PHI3D_nodal``): a tree gauge of ``_Hs`` over all the cells, rooted on the boundary, and
+:math:`\mathbf{n}\times\mathbf{H}_s=0` on the boundary, always (also without sources):
+
+.. code-block:: python
+
+   selection.select_all(mesh)
+   selection.nsel_ext(mesh)                                   # the boundary nodes: the roots of the tree
+   tree_gauge.tree_gauge(mesh, array_name="_Hs")              # _Hs = 0 on the tree edges
+   selection.set_value_on_selection(mesh, "_Hs", 0.0, 2)      # n x Hs = 0 on the boundary edges
+
+or ``_Hs`` given on every edge (the circulations of a known source field, :func:`pytec3d.tree_gauge.edges`,
+:func:`pytec3d.tree_gauge.edge_circulations`), which removes the Hs unknowns.
+
+The value of an edge DOF is a circulation along the edge in the solver's orientation (from the end point with the
+lexicographically smaller coordinates to the larger); :func:`pytec3d.tree_gauge.edges` returns each edge's midside
+point and its end points in that orientation.
 
 Constraints table of the log
 ----------------------------

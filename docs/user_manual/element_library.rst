@@ -82,7 +82,16 @@ Overview
 
 The A, V-A types, 6 and 8 are first order in time (``time_order = 1``: the theta method, see
 :ref:`theory-time-integration`); 7 is static (``time_order = 0``). A model uses one element type for all its cells, with
-any of its domains. 2D magnetostatics uses ``AVA2D_nodal``. Theory of 6 and 7: :doc:`../theory/formulations_potentials`.
+any of its domains. 2D magnetostatics uses ``AVA2D_nodal`` (or ``TPHI2D_edge`` without conductors). Theory of 6, 7
+and 8: :doc:`../theory/formulations_potentials`. Which type for which problem:
+
+* coils with circuits (voltage-driven, stranded coils with EMF), plasma simulations, eddy currents in structures:
+  the A, V-A types (0-5);
+* magnetostatics with saturated iron loops and given coil currents: ``PHI3D_nodal`` (or ``AVA3D_edge``);
+* superconductors (power laws, Jc(B)), conductors in applied fields, few unknowns outside the conductors: ``TPHI3D_edge``,
+  ``TPHI2D_edge`` (coils as fixed T, conductors with a net current through cuts).
+
+Examples of every type: :doc:`../examples/index`.
 
 .. _el-domains:
 
@@ -98,18 +107,20 @@ Domains
      - Fields and inputs
    * - ``NON_CONDUCTING`` (0)
      - Magnetostatics only, :math:`\mathbf{J}=0`: air, vacuum, insulators.
-     - A. Material: ``mur``.
+     - A (PHI3D_nodal: PHI + Hs; T-phi: PHI). Material: ``mur``.
    * - ``SOFT_MAGNETIC`` (1)
-     - As NON_CONDUCTING: iron without current, usually with a ``bh_curve`` law on its material.
-     - A. Material: ``mur`` (or the B-H curve).
+     - As NON_CONDUCTING: iron without current, usually with a B-H law on its material (``bh_curve``; the scalar
+       potential types ``bh_curve_h``).
+     - As NON_CONDUCTING. Material: ``mur`` (or the B-H curve).
    * - ``HARD_MAGNETIC`` (2)
      - Permanent magnet: :math:`\mathbf{H}=\nu\mathbf{B}-\mathbf{M}`, the magnetization adds the source
        :math:`\int\nabla\times\mathbf{w}\cdot\mathbf{M}` (T-phi: :math:`\int\nabla q\cdot\mathbf{B}_r`,
        :math:`\mathbf{B}_r=\mu_0\mu_r\mathbf{M}`). With a B-H curve see :doc:`../theory/constitutive`.
-     - A. Material: ``mur``, ``M``.
+     - As NON_CONDUCTING. Material: ``mur``, ``M``.
    * - ``STRANDED_CONDUCTOR`` (3)
      - Imposed current density, no eddy currents: :math:`\mathbf{J}=\mathbf{J}_s`.
-     - A. Material: ``mur`` (``M``). Element load ``Js``. ``PHI3D_nodal``: the source of Hs.
+     - A (``PHI3D_nodal``: PHI + Hs, ``Js`` the source of Hs; not a T-phi domain). Material: ``mur`` (``M``).
+       Element load ``Js``.
    * - ``CIRCUIT_COUPLED_CONDUCTOR`` (4)
      - **2D only.** Massive conductor with eddy currents and a **terminal**: the voltage V across its out-of-plane
        length, one value per conductor (coupled). Driven by its total current (``AMPS``) or by its voltage (``_V``).
@@ -118,7 +129,8 @@ Domains
      - Massive conductor with eddy currents. 2D: no terminal, :math:`J_z=-\sigma\partial_tA_z` (a closed ring, an
        infinitely long bar). 3D: with the electric potential V (charge conservation), currents injected with ``AMPS``
        and potentials fixed with ``_V``.
-     - 2D: A. 3D: A + V, nodal load ``AMPS``. Material: ``mur``, ``rho`` (``M``).
+     - 2D: A. 3D: A + V, nodal load ``AMPS``. T-phi: PHI + T, nodal load ``VLTG`` (on a cut). Material: ``mur``,
+       ``rho`` or a power law (``M``). Not a domain of ``PHI3D_nodal`` (static).
    * - ``STRANDED_COIL`` (6)
      - Multi-turn winding with uniform current density :math:`\mathbf{J}=(N/S)\,i\,\mathbf{T}` and circuit equation
        :math:`\mathrm{VOLT}=R\,i+\mathrm{EMF}`, :math:`\mathrm{EMF}=d\Psi/dt`. No eddy currents.
@@ -126,7 +138,7 @@ Domains
        ``resistance``, ``symmetry``, ``T``, and ``radius`` (2D) or ``volume`` (3D). Nodal load ``CURR``. Not in the
        scalar potential types (T-phi: a coil is T fixed on its edges, :ref:`el-tphi3d`).
    * - ``CUT_LAYER`` (7)
-     - ``TPHI3D_edge``: cells with T but no conduction: a layer of one cell spanning the hole of a ring (its net
+     - ``TPHI3D_edge``, ``TPHI2D_edge``: cells with T but no conduction: a layer of one cell spanning the hole of a ring (its net
        current), or the hole of a coil given as T fixed on its edges (:ref:`el-tphi3d`).
      - PHI + T (collapsed in a cut, fixed in a coil). Material: ``mur``.
 
@@ -739,15 +751,37 @@ Setup
 Nonlinear laws in the element types
 -----------------------------------
 
-The law ``bh_curve`` (source ``mat``: selected by MATERIAL id) replaces the coefficient ``nu`` (and ``nu_gauge`` of the
-3D nodal types) by values computed at each quadrature point from :math:`|\mathbf{B}|`:
+Laws are selected by MATERIAL id (source ``mat``) and replace a coefficient of the element type by values computed
+at each quadrature point (secant in the residual, tangent in the Jacobian):
 
-* secant :math:`\nu_s=H(|B|)/|B|` (times the identity) in the residual,
-* tangent :math:`\nu_s\mathbf{I}+(H'(|B|)-\nu_s)\,\hat{\mathbf{b}}\otimes\hat{\mathbf{b}}` in the Jacobian of the
-  curl-curl term; ``nu_gauge`` uses the secant only.
+.. list-table::
+   :header-rows: 1
+   :widths: 18 32 50
 
-It applies to every element type and every domain (each has ``nu``). See :doc:`nonlinear` and
-:doc:`../theory/nonlinear`.
+   * - Law
+     - Element types
+     - Replaces
+   * - ``bh_curve``
+     - the A, V-A types (0-5)
+     - ``nu`` (and ``nu_gauge`` of the 3D nodal types, secant only), input :math:`|\mathbf{B}|`: secant
+       :math:`\nu_s=H(|B|)/|B|`, tangent :math:`\nu_s\mathbf{I}+(H'-\nu_s)\,\hat{\mathbf{b}}\otimes\hat{\mathbf{b}}`
+   * - ``bh_curve_h``
+     - ``TPHI3D_edge``, ``TPHI2D_edge``, ``PHI3D_nodal``
+     - ``mu``, input :math:`|\mathbf{H}|`: secant :math:`B(|H|)/|H|`, tangent from :math:`dB/dH` (under a time
+       derivative, the rate of B(H): :doc:`../theory/nonlinear`)
+   * - ``power_law``
+     - ``TPHI3D_edge``, ``TPHI2D_edge``
+     - ``rho``, input :math:`|\mathbf{J}|`: secant :math:`E(J)/J`, tangent from :math:`dE/dJ`
+   * - ``power_law_b``
+     - ``TPHI3D_edge``, ``TPHI2D_edge``
+     - ``rho``, input :math:`|\mathbf{J}|` and the extra input :math:`\mathbf{H}` (:math:`|B|=\mu_0|H|`):
+       :math:`E=E_0(J/s(|B|))`, tangent at fixed B
+   * - ``power_law_e``
+     - ``AVA3D_*``
+     - ``sigma``, input :math:`|\mathbf{E}|`: the inverse law :math:`J(E)/E`
+
+``set_bh_curve`` and ``set_power_law`` pick the law of the element type of the model. A law applies in every domain
+that has its coefficient. See :doc:`nonlinear` and :doc:`../theory/nonlinear`.
 
 How an element type is written
 ------------------------------

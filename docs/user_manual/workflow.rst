@@ -107,10 +107,10 @@ What can change between steps
    * - Change
      - Allowed while loaded
      - Effect
-   * - Values of loads (``Js``, ``CURR``, ``AMPS``...)
+   * - Values of loads (``Js``, ``CURR``, ``AMPS``, ``VLTG``...)
      - yes
      - Read at the next solve. The system matrix is reused.
-   * - Values of Dirichlet arrays (``_A``, ``_V``, ``_VOLT``...)
+   * - Values of Dirichlet arrays (``_A``, ``_V``, ``_VOLT``, ``_PHI``, ``_T``, ``_Hs``...)
      - yes
      - If the set of constrained DOFs changes (a NaN becomes a number or the opposite), the system matrix is rebuilt
        and refactorized; if only the values change, it is reused.

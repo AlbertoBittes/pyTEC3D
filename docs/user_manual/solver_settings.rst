@@ -109,7 +109,9 @@ described in :petsc:`KSPMonitor <KSP/KSPMonitor>`, :petsc:`KSPView <KSP/KSPView>
 Nonlinear solver
 ----------------
 
-Used when at least one cell has a nonlinear law (:doc:`nonlinear`, :ref:`theory-newton`).
+Used when at least one cell has a nonlinear law (:doc:`nonlinear`, :ref:`theory-newton`). The defaults suit B-H
+curves; superconductor power laws need other settings (absolute tolerance, ``require_residual_reduction`` depending on
+the problem, Picard does not converge): :ref:`superconductor-settings`.
 
 .. list-table::
    :header-rows: 1
@@ -138,7 +140,8 @@ Used when at least one cell has a nonlinear law (:doc:`nonlinear`, :ref:`theory-
    * - ``linear_tolerance_multiplier``
      - Tolerance of each linear solve, relative to the current residual (iterative solvers).
    * - ``continue_after_max_iterations``
-     - Accept the last iterate when ``max_iterations`` is reached (True) or fail.
+     - libMesh: return the last iterate when ``max_iterations`` is reached (True) or fail inside the solver. Either
+       way ``solve()`` raises :class:`~pytec3d.errors.ConvergenceError` for a step that did not converge.
    * - ``continue_after_backtrack_failure``
      - Accept the iterate when the line search fails.
    * - ``verbose``

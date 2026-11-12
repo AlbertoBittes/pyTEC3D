@@ -36,9 +36,12 @@ Static analysis
    solver.solve()
 
 Magnetostatics with the imposed currents (``Js``, coil currents): no eddy currents. Time-integrated electric unknowns
-(``_timint`` types: V of the conductors, VOLT and EMF of the coils) are fixed to zero on a static step. In
-``TPHI3D_edge`` the model sets ``_T`` = 0 and frees ``_PHI`` in the conductors on a static step (the solver does not:
-:ref:`el-tphi3d`).
+(``_timint`` types: V of the conductors, VOLT and EMF of the coils) are fixed to zero on a static step. In the T-phi
+types (``TPHI3D_edge``, ``TPHI2D_edge``) the model sets ``_T`` = 0 on the conductor edges and frees ``_PHI`` inside
+them on a static step, then restores the transient gauges (the solver does not: :doc:`boundary_conditions`); a static
+step wipes the currents of the conductors, so persistent currents and trapped fields need transient steps only (a
+field-cooled state: a static step first, example ``bulk_2D_tphi_axisym``). ``PHI3D_nodal`` is static only: every step
+has ``transient_effects`` False.
 
 Transient analysis
 ------------------

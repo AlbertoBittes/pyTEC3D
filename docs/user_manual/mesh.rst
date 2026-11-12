@@ -47,7 +47,9 @@ Lines and some Bezier cells are also read. Rules:
 * All the cells of a model have the dimension of its element type: 2D cells for a 2D element type, 3D cells for a 3D
   one (no mixed 2D / 3D meshes).
 * An FE order of 2 (``option2 = 2``) needs quadratic cells.
-* **Edge elements** (``AVA3D_edge*``) need quadratic cells: their DOFs are stored on the midside nodes, one per edge.
+* **Edge elements** (``AVA3D_edge*``, ``TPHI3D_edge``, ``TPHI2D_edge``, ``PHI3D_nodal``: the fields A, T, Hs) need
+  quadratic cells: their DOFs are stored on the midside nodes, one per edge. ``TPHI2D_edge`` uses QUAD8 or TRI6
+  cells.
 * 2D axisymmetric models use the x coordinate as the radius (``x >= 0``) and the y axis as the axis of symmetry.
 * Cells whose node ordering is inverted are reoriented on import (the log counts them); degenerate and distorted
   cells are reported in the *Mesh quality* table.
@@ -83,7 +85,7 @@ Cell arrays
    * - ``Js``
      - 0
      - Element load: imposed source current density [A/m^2] of the stranded conductors (3 components).
-   * - ``B``, ``H``, ``Jt``
+   * - ``B``, ``H``, ``Jt``, ``E``
      - 0
      - Element results: mean values over the cell (see :doc:`outputs`).
    * - ``cell_centroids``, ``cell_volume``
@@ -112,6 +114,17 @@ Point arrays
      - 0 / NaN
      - Electric potential [V] (or its time integral [V s]): of the 3D solid conductors, and the terminal voltage of
        the 2D circuit-coupled conductors.
+   * - ``PHI`` / ``_PHI``
+     - 0 / NaN
+     - Magnetic scalar potential [A] of the scalar-potential types and its Dirichlet values.
+   * - ``T`` / ``_T``, ``Hs`` / ``_Hs``
+     - 0 / NaN
+     - Edge fields of the scalar-potential types (current vector potential T [A/m], source field Hs [A/m]): the
+       field at the nodes, and the edge values (circulations [A]) in component 2 of the Dirichlet array on the
+       midside nodes.
+   * - ``VLTG``
+     - 0
+     - Nodal load of an edge DOF of T (T-phi): a voltage [V], on a midside node of a cut.
    * - ``VOLT`` / ``_VOLT``
      - 0 / NaN
      - Terminal voltage of a stranded coil [V] (or its time integral).

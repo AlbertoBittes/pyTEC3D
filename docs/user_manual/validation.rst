@@ -84,14 +84,22 @@ The results are zero
 
 The solution is noisy or the true residual is large
    A singular system: a floating potential V, a missing gauge (edge elements without tree gauge), a 2D model without
-   any A condition. Enable ``"-mat_mumps_icntl_24": "1"`` and read the number of null pivots in the step report.
+   any A condition. Scalar potentials: PHI not fixed anywhere (a free boundary needs one fixed node), no Hs gauge
+   (``PHI3D_nodal``), no gauge in a T-phi conductor (``_PHI`` = 0 inside, or a tree of T), two free cuts on the same
+   hole. Enable ``"-mat_mumps_icntl_24": "1"`` and read the number of null pivots in the step report.
 
 Eddy currents oscillate from step to step
    Crank-Nicolson (theta = 0.5), or theta close to 0.5, after a sudden load change: use theta = 1 for the steps after
    the change (:ref:`choosing-theta`).
 
 Newton does not converge
-   See :doc:`nonlinear` (load ramps, smaller steps, line search settings, the curve beyond saturation).
+   See :doc:`nonlinear` (load ramps, smaller steps, line search settings, the curve beyond saturation). Power laws
+   of superconductors: :ref:`superconductor-settings` (absolute tolerance, normal-state end of the table,
+   ``require_residual_reduction``).
+
+A ring or a wire carries no net current (T-phi)
+   Its cut is missing or broken: without a cut a multiply connected conductor is modelled as cut open, with no
+   warning. Check the sum of ``Jt`` over a section (:ref:`el-cuts`).
 
 Out of memory in MUMPS
    ``"-mat_mumps_icntl_14": "50"`` (more workspace), more MPI ranks, or an iterative solver.

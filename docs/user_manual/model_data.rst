@@ -57,6 +57,9 @@ element_types
        3     ``AVA2D_nodal_timint`` as 0, with time-integrated electric unknowns
        4     ``AVA3D_nodal_timint`` as 1, with time-integrated electric unknowns
        5     ``AVA3D_edge_timint``  as 2, with time-integrated electric unknowns
+       6     ``TPHI3D_edge``        3D T-phi: nodal PHI everywhere, edge T in the conductors and cut layers
+       7     ``PHI3D_nodal``        3D static scalar potential: nodal PHI + edge source field Hs
+       8     ``TPHI2D_edge``        2D T-phi (planar / axisymmetric): nodal PHI, in-plane edge T
        ===== ====================== ====================================================================
    * - ``option1``
      - The **domain** (physical region): a name or its index (required).
@@ -71,10 +74,16 @@ element_types
        4     ``CIRCUIT_COUPLED_CONDUCTOR``  2D massive conductor with a terminal (V); not a 3D domain
        5     ``SOLID_CONDUCTOR``            massive conductor (2D: no electric DOF; 3D: potential V)
        6     ``STRANDED_COIL``              multi-turn coil with circuit equation (VOLT, EMF)
+       7     ``CUT_LAYER``                  T-phi only: T without conduction (cuts, hole of a fixed-T coil)
        ===== ============================== =========================================================
+
+       Each element type accepts its own subset (:ref:`el-domains`): the A, V-A types 0-6 (3D: without 4), ``PHI3D_nodal``
+       0-3, the T-phi types 0, 1, 2, 5 and 7.
    * - ``option2``
      - FE order of the Lagrange fields, 1 or 2 (default 1). Order 2 needs quadratic cells. Edge fields are always
-       first-order Nedelec; ``option2`` then sets the order of V, VOLT and EMF.
+       first-order Nedelec; ``option2`` then sets the order of V, VOLT and EMF. ``TPHI3D_edge``, ``TPHI2D_edge`` and
+       ``PHI3D_nodal`` are first order only (``option2`` = 1: the gradients of PHI must lie in the edge space of T or
+       Hs); they still need quadratic cells, which carry the edge DOFs on their midside nodes.
    * - ``option3``
      - 1 for a 2D axisymmetric model (about the y axis), 0 otherwise (default 0). Must be the same in the rows used by
        the cells (rows no cell uses are free), and 0 for 3D cells.
@@ -83,7 +92,7 @@ Rules checked when the model is loaded:
 
 * every ``TYPE`` value of the cells has a row;
 * **all the cells of a model have the same** ``element_type`` (the domains, orders and ids may differ): a model is
-  either 2D nodal, 3D nodal or 3D edge, linear or time-integrated;
+  one formulation (2D A, V-A, 3D nodal or edge A, V-A, linear or time-integrated, ``PHI3D_nodal``, 3D or 2D T-phi);
 * the dimension of the element type matches the cells (2D cells, 2D type);
 * the domain is one of the domains of the element type (e.g. ``CIRCUIT_COUPLED_CONDUCTOR`` exists only in 2D);
 * rows not used by any cell are reported as warnings; keys other than ``element_type`` and ``option1`` - ``option3``
@@ -106,11 +115,13 @@ materials
    * - ``mur``
      - 3x3 tensor
      - Relative permeability (dimensionless). Needed by every element. The reluctivity is
-       ``nu = (mu0 mur)^-1``. An anisotropic tensor is given in the element coordinate system of the cell.
+       ``nu = (mu0 mur)^-1`` (the scalar-potential types use ``mu = mu0 mur``). An anisotropic tensor is given in the
+       element coordinate system of the cell. Replaced by a B-H law where one is set.
    * - ``rho``
      - 3x3 tensor
      - Resistivity [Ohm m] of the massive conductors (``SOLID_CONDUCTOR``, ``CIRCUIT_COUPLED_CONDUCTOR``);
-       conductivity ``sigma = rho^-1``. Ignored in the other domains.
+       conductivity ``sigma = rho^-1``. Ignored in the other domains. Replaced by a power law (superconductors)
+       where one is set; required anyway (any value) in the T-phi conductors whose T is fixed (a coil winding).
    * - ``M``
      - number or 3-vector
      - Magnetization [A/m] (default 0): ``B = mu0 mur (H + M)``, i.e. ``H = nu B - M``. Read in every domain but
@@ -139,7 +150,7 @@ constants (real constants)
      - Meaning
    * - ``thickness``
      - number
-     - 2D only: out-of-plane length factor (default 1). Planar: the depth of the model [m]. Axisymmetric: the
+     - 2D only (``AVA2D_*``, ``TPHI2D_edge``): out-of-plane length factor (default 1). Planar: the depth of the model [m]. Axisymmetric: the
        fraction of the full turn (1 = 360 degrees); the length is ``thickness * 2 pi r``. **0 is used as given** and
        makes the model empty.
    * - ``cross_section``
@@ -187,7 +198,7 @@ dof_couplings
 
 A CP id and the DOF fields it couples. The nodes that have the same CP id in a point array ``CP_k`` share the value
 of those fields (:doc:`couplings`). The fields must be DOF fields of the element type of the model (``A``, ``V``,
-``VOLT``, ``EMF``). Every positive CP id found in a ``CP_k`` array must have an entry. In Python:
+``VOLT``, ``EMF``; ``T`` for the cuts of the T-phi types, :ref:`el-cuts`). Every positive CP id found in a ``CP_k`` array must have an entry. In Python:
 ``model.add_dof_couplings({1: ["VOLT", "EMF"]})``; ``model.periodic_boundaries(...)`` adds its own.
 
 .. note::
@@ -205,8 +216,11 @@ nonlinear_laws
 
 Selects a law of the library (``element_library/pytec3d_element_library/data/nonlinear_laws.json``) on the cells of an id, with its data.
 Whether the id is a ``MATERIAL``, ``CONSTANT`` or ``TYPE`` id is given by the *source* of the law (``bh_curve``:
-MATERIAL). An id can have a list of entries for several laws. See :doc:`nonlinear`. In Python:
-``model.set_bh_curve(26, [[H0, B0], [H1, B1], ...])`` or ``model.set_nonlinear_law(26, "bh_curve", B=[...], H=[...])``.
+MATERIAL). An id can have a list of entries for several laws. The laws: ``bh_curve`` (A, V-A), ``bh_curve_h``
+(scalar-potential types), ``power_law`` and ``power_law_b`` (T-phi superconductors), ``power_law_e`` (3D A, V-A); see
+:doc:`nonlinear`. In Python: ``model.set_bh_curve(26, [[H0, B0], [H1, B1], ...])`` and ``model.set_power_law(id,
+[[J0, E0], ...], jc_b=None)`` choose the law of the model's element type, or ``model.set_nonlinear_law(26, "bh_curve",
+B=[...], H=[...])``.
 
 coordinate_systems
 ------------------

@@ -28,7 +28,7 @@ and compiled into the solver. The library has these laws:
      - ``mat``
      - H
      - curve ``H``, ``B``
-     - ``mu`` of ``TPHI3D_edge`` and ``PHI3D_nodal``: :math:`\mu_s=B(|H|)/|H|` in the residual,
+     - ``mu`` of ``TPHI3D_edge``, ``TPHI2D_edge`` and ``PHI3D_nodal``: :math:`\mu_s=B(|H|)/|H|` in the residual,
        tangent :math:`\mu_s\mathbf{I}+(B'(|H|)-\mu_s)\hat{\mathbf{h}}\otimes\hat{\mathbf{h}}` in the Jacobian. A law of its
        own, not the inverse of ``nu``: ``set_bh_curve`` selects it for these types, from the same table. In a magnet
        :math:`\mathbf{B}=\mu_s\mathbf{H}+\mathbf{B}_r`, the remanence a constant load. In the
@@ -178,5 +178,7 @@ Convergence tips:
 * start with a static step at a small load, or ramp the load over a few steps;
 * smaller time steps help in transients that cross the knee of the curve;
 * if the line search fails, try ``"brent_line_search": False`` (backtracking), or a smaller ``minimum_step_length``;
-* ``"continue_after_max_iterations": True`` (default) accepts the last iterate after ``max_iterations``: check the
-  convergence column of the steps table; set it to False to stop the run instead.
+* a step that does not converge (``max_iterations`` reached, line search failed) raises
+  :class:`~pytec3d.errors.ConvergenceError` from ``solve()``; the last iterate is in the mesh arrays and the step in
+  the steps table. Catch the error to go on anyway (or to retry the step with other settings, e.g. a shorter step or
+  ``require_residual_reduction`` switched).

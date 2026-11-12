@@ -25,9 +25,11 @@ domain that implement it.
   (Nedelec elements with a tree-cotree gauge).
 * :doc:`circuits`: the domains driven through terminals: stranded coils and their circuit equation, conductors with
   a terminal in 2D, injected currents in 3D, and the time-integrated variants (``_timint``).
-* :doc:`nonlinear`: saturating materials: residual, Jacobian and Newton-Raphson iteration in block form.
+* :doc:`nonlinear`: saturating materials and power laws: residual, Jacobian and Newton-Raphson iteration in block
+  form, laws with several inputs, the rate of a law output under a time derivative.
 * :doc:`formulations_potentials`: the magnetic scalar potential: magnetostatics with the source field solved in the
-  same system (``PHI3D_nodal``), and the T-phi formulation (T-Omega, H-phi) for eddy currents (``TPHI3D_edge``).
+  same system (``PHI3D_nodal``), and the T-phi formulation (T-Omega, H-phi) for eddy currents and superconductors,
+  3D and 2D (``TPHI3D_edge``, ``TPHI2D_edge``): cuts, coils as fixed T.
 
 **The code.** :doc:`implementation`: how the kernels of the element types become the element matrices, the time
 scheme, the constraints (Dirichlet values, nodal frames, couplings) and the output fields.

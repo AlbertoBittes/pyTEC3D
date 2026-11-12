@@ -54,13 +54,16 @@ Key concepts
        (``model.data``, a JSON-like dict, usually read from ``model_data.json``).
    * - **Mesh arrays**
      - Everything that varies over the mesh is an array of the grid: on the cells the ids ``TYPE``, ``MATERIAL``,
-       ``CONSTANT``, ``COORDINATE_SYSTEM`` and the element loads (``Js``); on the nodes the solution (``A``, ``V``...),
-       the Dirichlet values (``_A``, ``_V``...: ``NaN`` = free), the nodal loads (``CURR``, ``AMPS``), the coupling ids
+       ``CONSTANT``, ``COORDINATE_SYSTEM`` and the element loads (``Js``); on the nodes the solution (``A``, ``V``, ``PHI``, ``T``...),
+       the Dirichlet values (``_A``, ``_V``, ``_PHI``, ``_T``...: ``NaN`` = free), the nodal loads (``CURR``, ``AMPS``,
+       ``VLTG``), the coupling ids
        (``CP_0``, ``CP_1``...) and the nodal frames (``node_angles``). See :doc:`user_manual/mesh`.
    * - **Element type**
-     - A formulation of the library (``AVA2D_nodal``, ``AVA3D_nodal``, ``AVA3D_edge`` and their time-integrated
-       variants), chosen per ``TYPE`` id together with a **domain** (air, conductor, coil, magnet...), an FE order and
-       the axisymmetric flag. See :doc:`user_manual/element_library`.
+     - A formulation of the library: the A, V-A types (``AVA2D_nodal``, ``AVA3D_nodal``, ``AVA3D_edge`` and their
+       time-integrated variants), the static scalar potential ``PHI3D_nodal``, and the T-phi types ``TPHI3D_edge``,
+       ``TPHI2D_edge`` (superconductors, conductors in applied fields). It is chosen per ``TYPE`` id together with a
+       **domain** (air, conductor, coil, magnet, cut layer...), an FE order and the axisymmetric flag. See
+       :doc:`user_manual/element_library`.
    * - **Selection**
      - APDL-like selection of nodes and cells (:mod:`pytec3d.selection`): select by array value, position, or
        topology, then set a value on the selection. This is how loads and boundary conditions are applied.

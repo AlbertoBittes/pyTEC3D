@@ -24,6 +24,14 @@ Python right away:
    * - ``VOLT``, ``EMF``
      - nodes
      - Terminal and induced voltage of the conductors and coils (time integrals in the ``_timint`` types).
+   * - ``PHI``
+     - nodes
+     - Scalar potential [A] of the scalar-potential types (total or reduced: H = T - grad PHI, Hs - grad PHI).
+   * - ``T``, ``Hs``
+     - nodes
+     - Current vector potential [A/m] (T-phi, conductors and cut layers) and source field [A/m] (``PHI3D_nodal``):
+       edge fields evaluated at the nodes, as A of the edge types. The edge DOF values themselves are not output:
+       the net current of a cut is the sum of ``Jt`` over a section of the conductor.
    * - ``B``, ``H``
      - nodes
      - Flux density [T] and field [A/m], :math:`L^2`-projected per cell and averaged at the nodes.
@@ -33,7 +41,9 @@ Python right away:
    * - ``Jt``
      - cells
      - Total current density [A/m^2]: imposed (``Js``), eddy / conduction (:math:`-\sigma(\partial_t\mathbf{A}+\nabla
-       V)`) and coil current density, depending on the domain (:doc:`element_library`).
+       V)`) and coil current density, depending on the domain (:doc:`element_library`). T-phi:
+       :math:`\nabla\times\mathbf{T}` (conductors, fixed-T coils; 2D: component 2, azimuthal when axisymmetric);
+       ``PHI3D_nodal``: :math:`\nabla\times\mathbf{H}_s`, the current the source field carries.
    * - ``E``
      - cells
      - Electric field [V/m] of the conductors: :math:`-\partial_t\mathbf{A}-\nabla V` (A, V-A: the 3D types and

@@ -13,9 +13,9 @@ A load is an array value, read at every solve. Loads can change freely between s
      - Meaning
    * - ``Js``
      - cells, 3 comp.
-     - ``STRANDED_CONDUCTOR``
+     - ``STRANDED_CONDUCTOR`` (A, V-A types, ``PHI3D_nodal``)
      - Imposed source current density [A/m^2], in the element coordinate system of the cell. In 2D only component 2
-       (out of plane / toroidal) acts.
+       (out of plane / toroidal) acts. ``PHI3D_nodal``: the source of Hs (only its solenoidal part acts).
    * - ``CURR``
      - nodes
      - ``STRANDED_COIL``
@@ -32,7 +32,7 @@ A load is an array value, read at every solve. Loads can change freely between s
        libMesh orientation of the edge (from its lexicographically smaller end point to the larger one).
    * - ``VLTG``
      - midside nodes
-     - ``TPHI3D_edge`` (``SOLID_CONDUCTOR``, ``CUT_LAYER``)
+     - ``TPHI3D_edge``, ``TPHI2D_edge`` (``SOLID_CONDUCTOR``, ``CUT_LAYER``)
      - Load of the edge DOF of T (a current [A]): a voltage [V]. On a coupled cut DOF it is the voltage around the
        ring (:ref:`el-tphi3d`).
    * - ``M``
@@ -75,6 +75,19 @@ fed by a current source, a plasma current density given by the plasma algorithm)
   cells; Js[1] is then the toroidal component), or compute the global components yourself
   (``model_edit.map_vector_field_to_global_components`` converts an array given in the components of a coordinate
   system; or write them with NumPy from ``cell_centroids``). See ``pyTEC3D_APDL_benchmarks/suites/simple/cases/sphere_coil_3D*``.
+
+Sources of the scalar-potential types
+-------------------------------------
+
+* ``PHI3D_nodal``: ``Js`` on the ``STRANDED_CONDUCTOR`` cells (any shape, one value per cell with
+  ``set_value_on_selection(..., component=None, location="elem")``), magnets (``M``), and the applied field as the
+  potential on the boundary (:doc:`boundary_conditions`). The divergence-free condition above is not needed: the
+  source field takes the solenoidal part of ``Js``.
+* T-phi (``TPHI3D_edge``, ``TPHI2D_edge``): no source current and no circuit. The drives are Dirichlet values:
+  the applied field (``_PHI`` on the boundary), a **coil as T fixed on its edges** (``_T`` = NI(t) times the edge values
+  of a source field T0, at every step: :ref:`el-tphi3d`), a **current through a cut** (``_T`` = +-I on its crossing
+  edges: :ref:`el-cuts`); or the load ``VLTG``, a **voltage** around a conductor on its coupled cut DOF. Magnets
+  (``M``) as in the other types.
 
 Current or voltage of a 2D conductor with a terminal and of a coil
 ------------------------------------------------------------------

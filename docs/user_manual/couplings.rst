@@ -6,6 +6,8 @@ A DOF coupling makes a group of nodes share the value of some fields. It is used
 * **terminals**: one V for the whole cross-section of a 2D circuit-coupled conductor, one VOLT and one EMF for a
   stranded coil, one V for an equipotential terminal face of a 3D conductor;
 * **cyclic (periodic) symmetry**: the field on one sector face equals the field on the other face;
+* **cuts** of the T-phi types: the crossing edges of a cut share one T value, the net current of a conductor
+  (:ref:`el-cuts`, below);
 * any other "same value" condition between nodes.
 
 How couplings are defined
@@ -43,6 +45,27 @@ Rules:
 Vector fields are coupled component by component **in the nodal frames** of the two nodes (``node_angles``): with the
 frames of the second sector face rotated by the sector angle, the coupled components are the same cylindrical
 components on both faces.
+
+Coupled edges: the cut of a conductor (T-phi)
+---------------------------------------------
+
+The crossing edges of a cut layer are coupled on one DOF, the net current of the conductor. An edge value is a
+circulation in the edge's own orientation, so the solver must know which way each edge crosses the layer: the corner
+nodes of the two faces of the layer get two more ids, which only give that orientation:
+
+.. code-block:: python
+
+   selection.select(mesh, "ID", crossing_mids)                # midside nodes of the crossing edges
+   selection.set_value_on_selection(mesh, "CP_0", 1)          # the coupled DOF
+   selection.select(mesh, "ID", corners_face_0)               # corner nodes of the face c = 0 of the layer
+   selection.set_value_on_selection(mesh, "CP_0", 2)
+   selection.select(mesh, "ID", corners_face_1)               # corner nodes of the face c = 1
+   selection.set_value_on_selection(mesh, "CP_0", 3)
+   solver.model.add_dof_couplings({1: ["T"], 2: ["T"], 3: ["T"]})
+
+Its value is the current from the face 2 side to the face 3 side; ``VLTG`` on one coupled midside node is the voltage
+around the conductor. Each conductor takes its own three ids; conductors in series share them. Example
+``examples/ring_3D_tphi``.
 
 Periodic (cyclic) boundaries
 ----------------------------
