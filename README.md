@@ -23,7 +23,7 @@ Three independent distributions, built from this repository:
   - `selection`, `mesh`, `model_edit`, `coordinate_system`, `tree_gauge`: model preparation;
   - `algorithm`: plasma equilibrium and evolution;
   - `solver_input`: the NumPy views of the mesh arrays handed to the solver;
-  - `pytec3d_paraview_plugin`: ParaView filters and console helpers;
+  - `pytec3d_paraview_plugin`: ParaView filter Set Value On Selection and console helpers;
   - `mesh_converter`: ANSYS `.cdb` to `.vtu` conversion (`pytec3d-convert-cdb`);
   - `resources`: an example of model data.
 

@@ -7,12 +7,15 @@ graphical front end of pyTEC3D: the model is a VTK grid, so ParaView shows it di
 two complementary ways:
 
 * the **Python Shell** of ParaView (:paraview:`ParaView and Python
-  <Tutorials/SelfDirectedTutorial/batchPythonScripting.html>`): the whole :mod:`pytec3d.selection`,
-  :mod:`pytec3d.mesh` and :mod:`pytec3d.model_edit` API, run on the grids loaded in the GUI, with the results shown at
-  once;
-* three **filters** (*Select*, *Select Extracted Data*, *Set Value On Selection*) that do the same operations from
-  the pipeline browser, without code, and combine with the graphical selection tools of ParaView
-  (:paraview:`selecting data <UsersGuide/selectingData.html>`).
+  <Tutorials/SelfDirectedTutorial/batchPythonScripting.html>`): a :class:`~pytec3d.Model` whose mesh is the one
+  shown in the view, edited with the whole pytec3d API, and :func:`~pytec3d.pytec3d_paraview_plugin.refresh` to see
+  the result;
+* the filter **Set Value On Selection**, which writes values on the selection made with the graphical tools of
+  ParaView (:paraview:`selecting data <UsersGuide/selectingData.html>`: rubber band, *Find Data*...), without code.
+
+Both work on **one model mesh**, shown as the pipeline source ``Mesh``
+(:data:`~pytec3d.pytec3d_paraview_plugin.MESH_NAME`). Its output *is* the model's grid, not a copy: what the console
+or the plugin writes is what the view shows after a refresh.
 
 The idea is to prepare the model where you see it: pick regions and boundaries with the mouse or by criteria, check
 them visually, write values (Dirichlet arrays, loads, ``TYPE`` / ``MATERIAL`` ids, coupling ids), save the mesh, and
@@ -26,18 +29,21 @@ ParaView runs its own Python interpreter, which does **not** see the packages of
 The plugin file solves this: when it is executed it adds the folder that contains the ``pytec3d`` package to
 ``sys.path`` of ParaView's Python, so ``import pytec3d`` works from then on (ParaView's Python provides VTK and NumPy).
 
-* **For the console**: open *View > Python Shell*, click **Run Script** and choose
-  ``python/src/pytec3d/pytec3d_paraview_plugin.py`` (from the repository, or from the installed package folder), once per
-  ParaView session. The shell then has pytec3d and its tools, **with nothing to import**: ``selection``, ``meshes``
-  (:mod:`pytec3d.mesh`), ``model_edit``, ``element_library``, ``tree_gauge``, ``Model``, the coordinate systems
-  (``CylindricalCoordinateSystem``...), ``np``, ``pytec3d`` itself and ``plot`` (the list is
-  :data:`pytec3d.pytec3d_paraview_plugin.CONSOLE_NAMES`). ``selection`` is :mod:`pytec3d.selection`, not the selection
-  module of ParaView.
-* **For the filters**: *Tools > Manage Plugins > Load New...*, select the same file (tick *Auto Load* to have the
-  filters at every start). Loaded this way, the plugin also puts the names of the console in the Python Shell if the
-  shell is already open; otherwise (e.g. *Auto Load* at the start of ParaView) use *Run Script* as above.
+**Load the plugin**: *Tools > Manage Plugins > Load New...*, select ``python/src/pytec3d/pytec3d_paraview_plugin.py``
+(from the repository, or from the installed package folder); tick *Auto Load* to have it at every start. That is all:
 
-The two can be combined: the filters from the Plugin Manager, the console from *Run Script*.
+* the filter *Set Value On Selection* is in the *Filters* menu;
+* the Python Shell (*View > Python Shell*, also one opened later) has all of pytec3d, **with nothing to import**
+  (ParaView's Python has no environment to import from): ``Solver``, ``Model``, ``selection``, ``meshes``
+  (:mod:`pytec3d.mesh`), ``model_edit``, ``element_library``, ``tree_gauge``, the coordinate systems
+  (``CylindricalCoordinateSystem``...), ``np``, ``pytec3d`` itself, and the helpers ``from_paraview``, ``plot``,
+  ``refresh``, ``get_model``, ``get_solver`` and ``MESH_NAME`` (the list is :data:`pytec3d.pytec3d_paraview_plugin.CONSOLE_NAMES`).
+  ``selection`` is :mod:`pytec3d.selection`, not the selection module of ParaView;
+* the working folder is your **home folder** (or ``$PYTEC3D_PARAVIEW_WORKDIR``), not ParaView's own folder: relative
+  paths, ``model.save_model()`` and the ``<mesh_name>.log`` of ``solver.read_model()`` go there.
+
+Without loading the plugin, *Run Script* of the same file in the Python Shell gives the console part only. The
+plugin and *Run Script* share the shown model for the whole session.
 
 Use a ParaView version whose Python has the same major version as the environment (3.12) and NumPy available
 (ParaView 5.12 or later binaries).
@@ -45,64 +51,76 @@ Use a ParaView version whose Python has the same major version as the environmen
 Working in the Python Shell
 ---------------------------
 
-After *Run Script* of the plugin file, with no import:
+There are two ways to get the model into ParaView; either way it becomes the source ``Mesh``.
+
+**A .vtu dragged into ParaView** (or opened with *File > Open*): select it in the Pipeline Browser, then
 
 .. code-block:: python
 
-   # 1. Read a model with pytec3d and show it in the view
-   model = Model.read_model("/path/to/coil_2D_avolt.vtu", reset_arrays=True)
-   grid = model.mesh
-   plot(grid, "coil")                         # a new source "coil" in the pipeline browser
+   model = from_paraview()             # or from_paraview("coil_2D_avolt.vtu"): the source by name
 
-   # 2. Select and inspect: the selection arrays are ordinary arrays, colour by them in the GUI
+The model is a copy of the reader's grid, named after the file; the reader is hidden and ``Mesh`` shows the model.
+
+**A model read in the console**:
+
+.. code-block:: python
+
+   model = Model.read_model("/path/to/coil_2D_avolt.vtu")
+   plot(model)
+
+Then edit the model with the pytec3d API and call ``refresh()`` to update the view:
+
+.. code-block:: python
+
+   grid = model.mesh
    selection.select(grid, "MATERIAL", 23, location="elem")
    selection.nsle(grid)
-   print(selection.selected_ids(grid, "node").size, "nodes selected")
-   grid.Modified(); Render()                  # refresh the view; colour by "selection_point"
-
-   # 3. Write values and save the prepared mesh for the analysis script
    selection.set_value_on_selection(grid, "CP_0", 1)
+   refresh()                           # colour by "selection_point" or "CP_0" in the GUI
    model.save_model("/path/to/coil_2D_prepared.vtu")
 
-A grid already opened in the GUI (*File > Open*) can be fetched into the console as a VTK object:
+``refresh()`` sets the model's current grid as the output of ``Mesh``, marks it modified, updates the pipeline, shows
+the quadratic cells as they are (*Triangulate* and *Nonlinear Subdivision Level* 0) and renders. ``get_model()``
+returns the shown model, e.g. after a restart of the console namespace; ``plot(other)`` shows another model (or a
+grid) in the same ``Mesh``.
+
+To solve the model, attach it to a solver; ``plot(solver)`` then shows the solver's current model (also after
+``solver.read_model`` of another file), and ``get_solver()`` returns it:
 
 .. code-block:: python
 
-   from paraview import servermanager                # ParaView's own module
-   grid = servermanager.Fetch(GetActiveSource())     # a copy of the data of the selected pipeline item
-   selection.select_all(grid); selection.nsel_ext(grid)
-   plot(grid, "boundary nodes")                     # show the edited copy
+   solver = Solver()
+   solver.model = model
+   plot(solver)
 
 Every operation of :doc:`selection`, :doc:`boundary_conditions` and :doc:`coordinate_systems` is available, so the
 console is a good place to try selections (by position in a cylindrical system, by array value, by topology) before
 writing them in a macro.
 
-The filters
------------
+Set Value On Selection
+----------------------
 
-After *Load New* of the plugin, three filters appear in the *Filters* menu (search with Ctrl+Space). They work on an
-unstructured grid input and edit its selection arrays and values, as :mod:`pytec3d.selection` does:
+After loading the plugin, *Set Value On Selection* is in the *Filters* menu (search with Ctrl+Space). It is applied on
+``Mesh`` and acts on it; its output is empty (the work is done by its button, not by the pipeline). Applied on another
+source, its button refuses.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 25 75
+1. Show the model (``from_paraview()`` or ``plot(model)``), select ``Mesh`` in the Pipeline Browser, add the filter
+   *Set Value On Selection* and *Apply*: its *Arrays* list has the arrays of the model mesh.
+2. Check the *Arrays* to write, set *Value* and *Component* (of a vector array; ignored for a scalar), *Apply*.
+3. Select on ``Mesh`` with ParaView's tools (rubber band, *Find Data* with its query: no *Extract Selection*
+   needed), then press **Set Value**. The view is refreshed. Select again and press *Set Value* again for the next
+   region; *Apply* only when the properties change.
 
-   * - Filter
-     - Effect
-   * - **Select**
-     - Select points or cells by the value of an array. Properties: *ArrayName*, *Type* (Node / Element), *Mode*
-       (Set, Add, Reselect, Unselect), *Component* (-1 for the magnitude), *Values* (``"1"`` one value, ``"0:2"`` an
-       inclusive range, ``"1, 3"`` a list).
-   * - **Select Extracted Data**
-     - Turn an interactive ParaView selection into a pyTEC3D selection. Select cells or points in the view (rubber
-       band, *Find Data*...), apply *Extract Selection*, then apply *Select Extracted Data* with the model as input 0
-       and the extraction as input 1, with a *Mode*.
-   * - **Set Value On Selection**
-     - Write *Value* (and *Component*) in the checked *Arrays* at the selected points / cells.
+What is written:
 
-Filters can be chained (e.g. *Select* the cells of a material, then *Select Extracted Data* to add a hand-picked
-region, then *Set Value On Selection*). Save the last output with *File > Save Data* (``.vtu``): the analysis script
-reads it with ``Solver.read_model(path, reset_arrays=False)`` so that the values written in ParaView are kept.
+* on a **cell selection**: the cell arrays on the selected cells, the point arrays on all the points of those cells;
+* on a **point selection**: the point arrays on the selected points; cell arrays are left unchanged (a warning);
+* with **no ParaView selection** on ``Mesh``: the pyTEC3D selection (arrays ``selection_point`` / ``selection_cell``,
+  as :func:`pytec3d.selection.set_value_on_selection`), e.g. a selection made in the console.
+
+An array that exists on both points and cells is written on both. Save the model from the console
+(``model.save_model(path)``) or with *File > Save Data* on ``Mesh`` (``.vtu``): the analysis script reads it with
+``Solver.read_model(path, reset_arrays=False)`` so that the values written in ParaView are kept.
 
 Viewing the results
 -------------------

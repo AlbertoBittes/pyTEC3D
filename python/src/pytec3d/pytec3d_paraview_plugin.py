@@ -1,20 +1,38 @@
-"""ParaView integration of pytec3d.
+"""ParaView integration of pytec3d: one model mesh shown as the source ``Mesh``, edited from the console or the plugin.
 
 Two uses, which can be combined:
 
-* Console: *Run Script* of this file in the ParaView Python shell. The shell then has pytec3d and its tools, with no
-  import to type: ``selection``, ``meshes`` (:mod:`pytec3d.mesh`), ``model_edit``, ``Model``, the coordinate systems,
-  ``np``, and :func:`plot` to show a mesh (:data:`CONSOLE_NAMES`).
-* Plugin: load this file in ParaView (Tools > Manage Plugins > Load New) to get the filters *Select*,
-  *Select Extracted Data* and *Set Value On Selection*, which edit the selection and the arrays of a model mesh as
-  :mod:`pytec3d.selection` does. Loaded this way it also puts the names of the console in the Python shell, when the
-  shell already exists.
+* Console: load this file as a plugin (below), or *Run Script* of it in the ParaView Python shell. The shell then has
+  all of pytec3d with nothing to import - ``Solver``, ``Model``, ``selection``, ``meshes`` (:mod:`pytec3d.mesh`),
+  ``model_edit``, ``element_library``, ``tree_gauge``, the coordinate systems, ``np`` - and the helpers of this file
+  (:data:`CONSOLE_NAMES`):
+
+  - :func:`from_paraview` - a model whose mesh is the grid of a source of the pipeline, e.g. a ``.vtu`` dragged
+    into ParaView: ``model = from_paraview()``;
+  - :func:`plot` - show a model read in the console: ``model = Model.read_model(...); plot(model)``, or the model of
+    a solver: ``plot(solver)``;
+  - :func:`refresh` - show the current state of the model mesh after editing it in the console;
+  - :func:`get_model`, :func:`get_solver` - the shown model, the shown solver (after ``plot(solver)``).
+
+  A model is solved by attaching it to a solver: ``solver = Solver(); solver.model = model``.
+
+  Either way the model mesh is the source :data:`MESH_NAME` (``"Mesh"``): its output *is* the model's grid, not a
+  copy, so what the console changes is what ParaView shows after :func:`refresh`.
+* Plugin: load this file in ParaView (Tools > Manage Plugins > Load New) to get the source *Set Value On Selection*.
+  It writes a value into the checked arrays of the model mesh, on ParaView's selection of the ``Mesh`` source
+  (interactive, or *Find Data*), or on the pyTEC3D selection arrays ``selection_point`` / ``selection_cell`` when
+  ParaView has no selection, then refreshes the view. Loaded this way it also puts the console names in the Python
+  shell, when the shell already exists.
+
+The shown solver and mesh are kept in one place for the whole ParaView session (:data:`STATE_MODULE`), so the
+plugin and a *Run Script* of this file share them.
 """
 
 # No ``from __future__`` import: *Run Script* runs this file after a first line of its own (``__file__ = ...``).
 
 import os
 import sys
+import types
 import weakref
 from typing import Any
 
@@ -28,14 +46,16 @@ for _directory in (_PACKAGE_PARENT, os.path.normpath(_REPOSITORY_ELEMENT_LIBRARY
 
 import numpy as np
 from vtkmodules.util import numpy_support as vtknp
-from vtkmodules.vtkCommonDataModel import vtkDataSet, vtkUnstructuredGrid
+from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
 
 # The console names (CONSOLE_NAMES): with *Run Script* every top-level name of this file is a name of the shell.
-import pytec3d  # noqa: F401
+# ParaView's Python has no environment to import from, so the console gets all of pytec3d.
+import pytec3d
 from pytec3d import (  # noqa: F401
     CartesianCoordinateSystem,
     CylindricalCoordinateSystem,
     Model,
+    Solver,
     SphericalCoordinateSystem,
     XAxisCylindricalCoordinateSystem,
     YAxisCylindricalCoordinateSystem,
@@ -45,23 +65,51 @@ from pytec3d import (  # noqa: F401
     selection,
     tree_gauge,
 )
-from pytec3d import mesh as meshes  # noqa: F401
+from pytec3d import mesh as meshes
 from pytec3d._logging import get_logger
-from pytec3d._typing import Location, SelectionMode
+from pytec3d._typing import Location
 
 LOGGER = get_logger("pytec3d.paraview")
 
-#: Selection modes and locations as indexed by the enumerations of the filter properties.
-_MODES: tuple[SelectionMode, ...] = ("s", "a", "r", "u")
-_LOCATIONS: tuple[Location, ...] = ("node", "elem")
+#: Name of the pipeline source that shows the model mesh.
+MESH_NAME = "Mesh"
+
+#: Name of the module (in ``sys.modules``) that keeps the shown solver and mesh for the whole session.
+STATE_MODULE = "_pytec3d_paraview_state"
+
+#: The names this file puts in the ParaView Python shell.
+CONSOLE_NAMES: tuple[str, ...] = (
+    "np",
+    "pytec3d",
+    "Solver",
+    "Model",
+    "selection",
+    "meshes",
+    "model_edit",
+    "element_library",
+    "tree_gauge",
+    "CartesianCoordinateSystem",
+    "CylindricalCoordinateSystem",
+    "SphericalCoordinateSystem",
+    "XAxisCylindricalCoordinateSystem",
+    "YAxisCylindricalCoordinateSystem",
+    "ZAxisCylindricalCoordinateSystem",
+    "from_paraview",
+    "plot",
+    "refresh",
+    "get_model",
+    "get_solver",
+    "MESH_NAME",
+)
 
 try:
     from paraview.util.vtkAlgorithm import smdomain, smproperty, smproxy
     from vtkmodules.util.vtkAlgorithm import VTKPythonAlgorithmBase
     from vtkmodules.vtkCommonCore import vtkDataArraySelection
 
-    PARAVIEW_AVAILABLE = True
-except ImportError:  # Outside ParaView: the decorators do nothing and the filters cannot run.
+    # Not a mocked paraview (the documentation build): there the console setup must not run
+    PARAVIEW_AVAILABLE = not getattr(smproxy, "__sphinx_mock__", False)
+except ImportError:  # Outside ParaView: the decorators do nothing and the plugin cannot run.
     PARAVIEW_AVAILABLE = False
 
     class _Decorators:
@@ -77,95 +125,385 @@ except ImportError:  # Outside ParaView: the decorators do nothing and the filte
         def Modified(self) -> None:
             pass
 
-    class vtkDataArraySelection:  # type: ignore[no-redef]  # noqa: N801
-        def AddObserver(self, *args: Any) -> None:
-            pass
+    from vtkmodules.vtkCommonCore import vtkDataArraySelection
 
 
-_MODE_XML = """
-    <IntVectorProperty name="Mode" command="SetMode" number_of_elements="1" default_values="0">
-      <EnumerationDomain name="enum">
-        <Entry value="0" text="Set"/>
-        <Entry value="1" text="Add"/>
-        <Entry value="2" text="Reselect"/>
-        <Entry value="3" text="Unselect"/>
-      </EnumerationDomain>
-    </IntVectorProperty>
-"""
+# ------------------------------------------------------------------------------------------------ shared state
 
 
-#: The names this file puts in the ParaView Python shell.
-CONSOLE_NAMES: tuple[str, ...] = (
-    "np",
-    "pytec3d",
-    "Model",
-    "selection",
-    "meshes",
-    "model_edit",
-    "element_library",
-    "tree_gauge",
-    "CartesianCoordinateSystem",
-    "CylindricalCoordinateSystem",
-    "SphericalCoordinateSystem",
-    "XAxisCylindricalCoordinateSystem",
-    "YAxisCylindricalCoordinateSystem",
-    "ZAxisCylindricalCoordinateSystem",
-    "plot",
-)
+def _state() -> types.SimpleNamespace:
+    """The session state: ``shown``, what :data:`MESH_NAME` shows - a :class:`~pytec3d.Model`, a
+    :class:`~pytec3d.Solver` (its model) or a ``vtkUnstructuredGrid`` - or None.
+
+    Held by a module of its own in ``sys.modules``, so that every copy of this file (the plugin, *Run Script*)
+    shares it.
+    """
+    module = sys.modules.get(STATE_MODULE)
+    if module is None:
+        module = types.ModuleType(STATE_MODULE, "pytec3d ParaView session state")
+        sys.modules[STATE_MODULE] = module
+    return module.__dict__.setdefault("session", types.SimpleNamespace(shown=None))
 
 
-def setup_paraview_console(namespace: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    """Put the names of :data:`CONSOLE_NAMES` in the ParaView Python shell.
+def get_model() -> Model:
+    """The shown model (:func:`from_paraview`, or :func:`plot` of a model or a solver).
+
+    Raises:
+        RuntimeError: If no model is shown (nothing, or a bare grid).
+    """
+    shown = _state().shown
+    if isinstance(shown, Solver):
+        return shown.model
+    if isinstance(shown, Model):
+        return shown
+    raise RuntimeError("No pyTEC3D model is shown: use model = from_paraview() or plot(model).")
+
+
+def get_solver() -> Solver:
+    """The shown solver, when :func:`plot` was given a solver.
+
+    Raises:
+        RuntimeError: If what is shown is not a solver.
+    """
+    shown = _state().shown
+    if isinstance(shown, Solver):
+        return shown
+    raise RuntimeError("No pyTEC3D solver is shown: plot(solver) shows the model of a solver "
+                       "(e.g. solver = Solver(); solver.model = get_model(); plot(solver)).")
+
+
+def _grid_of(target: Any) -> vtkUnstructuredGrid:
+    """The grid of a solver (of its current model), a model or a grid.
+
+    Raises:
+        TypeError: If ``target`` is none of them.
+        ValueError: If the model has no mesh.
+    """
+    if isinstance(target, Solver):
+        grid = target.model.mesh
+    elif isinstance(target, Model):
+        grid = target.mesh
+    elif isinstance(target, vtkUnstructuredGrid):
+        grid = target
+    else:
+        raise TypeError(f"Expected a pytec3d Model, Solver or vtkUnstructuredGrid, got {type(target).__name__}.")
+    if grid is None:
+        raise ValueError("The model has no mesh: read a model first (Model.read_model(...)).")
+    return grid
+
+
+def _current_grid() -> vtkUnstructuredGrid:
+    """The grid to show: that of what is shown now (a solver may have read another model since :func:`plot`).
+
+    Raises:
+        RuntimeError: If nothing is shown.
+    """
+    shown = _state().shown
+    if shown is None:
+        raise RuntimeError("No model mesh is shown: use model = from_paraview() or plot(model).")
+    return _grid_of(shown)
+
+
+# ------------------------------------------------------------------------------------------------ console
+
+
+def working_directory() -> str:
+    """The working folder of pytec3d in ParaView: ``$PYTEC3D_PARAVIEW_WORKDIR``, else the home folder.
+
+    Not ParaView's own folder (where it often starts, read-only on Windows): relative paths, ``solver.save_model()``
+    and the ``<mesh_name>.log`` of :meth:`pytec3d.Solver.read_model` use the working folder.
+    """
+    return os.path.abspath(os.environ.get("PYTEC3D_PARAVIEW_WORKDIR") or os.path.expanduser("~"))
+
+
+def setup_paraview_console(namespace: dict[str, Any] | None = None, change_directory: bool = True) -> dict[str, Any]:
+    """Make :data:`CONSOLE_NAMES` available in the ParaView Python shell and move to :func:`working_directory`.
+
+    The names go into the namespace of the shell when it exists, and into ``builtins``, so that a shell opened later
+    (e.g. after a plugin *Auto Load* at the start of ParaView) has them too.
 
     Args:
         namespace: The namespace of the shell. By default the one of ParaView's Python shell (``__vtkConsoleLocals``
             of ``__main__``), when the shell exists.
+        change_directory: Change the working folder to :func:`working_directory` (created when missing).
 
     Returns:
-        The namespace, or None when there is no shell (outside ParaView, or a plugin loaded before the shell was
-        created: then *Run Script* of this file gives the names).
+        The names and their values.
     """
+    import builtins
+
+    names = globals()
+    values = {name: names[name] for name in CONSOLE_NAMES}
     if namespace is None:
         import __main__
 
         namespace = getattr(__main__, "__vtkConsoleLocals", None)
-        if namespace is None:
-            return None
-    names = globals()
-    namespace.update({name: names[name] for name in CONSOLE_NAMES})
+    if namespace is not None:
+        namespace.update(values)
+    for name, value in values.items():
+        setattr(builtins, name, value)
+    if change_directory:
+        folder = working_directory()
+        try:
+            os.makedirs(folder, exist_ok=True)
+            os.chdir(folder)
+        except OSError as error:
+            LOGGER.warning("Could not move to the working folder '%s' (%s); staying in '%s'.", folder, error,
+                           os.getcwd())
     LOGGER.info(
-        "pytec3d %s in the ParaView Python shell (from %s): %s.",
+        "pytec3d %s in the ParaView Python shell (from %s, working folder %s): %s.",
         pytec3d.__version__,
         _PACKAGE_PARENT,
+        os.getcwd(),
         ", ".join(CONSOLE_NAMES),
     )
-    return namespace
+    return values
 
 
-def plot(mesh: vtkUnstructuredGrid, name: str = "Mesh") -> None:
-    """Show a mesh in the ParaView view, e.g. ``plot(solver.model.mesh)``.
+def _mesh_proxy(create: bool = False) -> Any:
+    """The source :data:`MESH_NAME` (a TrivialProducer), or None; with ``create``, made (and shown) when missing.
+
+    Another kind of source with that name (e.g. a reader the user renamed) is renamed out of the way.
+    """
+    from paraview.simple import FindSource, RenameSource, Show, TrivialProducer
+
+    proxy = FindSource(MESH_NAME)
+    if proxy is not None and proxy.GetXMLName() != "TrivialProducer":
+        RenameSource(f"{MESH_NAME} (original)", proxy)
+        proxy = None
+    if proxy is None and create:
+        proxy = TrivialProducer()
+        proxy.GetClientSideObject().SetOutput(_current_grid())
+        RenameSource(MESH_NAME, proxy)
+        Show(proxy)
+    return proxy
+
+
+def refresh() -> None:
+    """Show the current state of the model mesh in ParaView, after it changed (arrays, selection, another model).
 
     Raises:
-        TypeError: If ``mesh`` is not a ``vtkUnstructuredGrid``.
-        ImportError: Outside ParaView.
+        RuntimeError: If no model mesh is shown.
     """
-    if not isinstance(mesh, vtkUnstructuredGrid):
-        raise TypeError(f"mesh must be a vtkUnstructuredGrid, got {type(mesh).__name__}.")
-    from paraview.simple import RenameSource, Render, Show, TrivialProducer
+    from paraview.simple import GetDisplayProperties, Render, UpdatePipeline
 
-    producer = TrivialProducer()
-    producer.GetClientSideObject().SetOutput(mesh)
-    RenameSource(name, producer)
-    Show(producer)
+    grid = _current_grid()
+    proxy = _mesh_proxy(create=True)
+    display = GetDisplayProperties(proxy)
+    proxy.GetClientSideObject().SetOutput(grid)
+    proxy.MarkModified(proxy)
+    UpdatePipeline(proxy=proxy)
+    # Quadratic cells as they are, not split into linear pieces
+    properties = display.ListProperties()
+    if "Triangulate" in properties:
+        display.Triangulate = 0
+    if "NonlinearSubdivisionLevel" in properties:
+        display.NonlinearSubdivisionLevel = 0
     Render()
 
 
-def _input_grid(in_info: Any) -> vtkUnstructuredGrid:
-    grid = vtkUnstructuredGrid.GetData(in_info[0])
-    if grid is None:
-        raise ValueError("The filter needs an unstructured grid on its input.")
-    selection.ensure_selection_arrays(grid)
-    return grid
+def plot(target: Any = None) -> Any:
+    """Show a model mesh as the source :data:`MESH_NAME`, e.g. ``plot(model)`` after ``model = Model.read_model(...)``.
+
+    The source shows the grid itself, so later changes need only :func:`refresh`.
+
+    Args:
+        target: A :class:`~pytec3d.Model`, a :class:`~pytec3d.Solver` (its current model, also after it reads another
+            one) or a ``vtkUnstructuredGrid``; None shows again the current one.
+
+    Returns:
+        The source :data:`MESH_NAME`.
+
+    Raises:
+        TypeError: If ``target`` is not a model, a solver or a grid.
+        ImportError: Outside ParaView.
+    """
+    if target is not None:
+        _grid_of(target)  # checked before it replaces what is shown
+        _state().shown = target
+    refresh()
+    return _mesh_proxy()
+
+
+def from_paraview(source: Any = None, mesh_name: str | None = None) -> Model:
+    """A model whose mesh is the grid of a pipeline source, e.g. a ``.vtu`` dragged into ParaView, shown as
+    :data:`MESH_NAME` (the source itself is hidden): ``model = from_paraview()``.
+
+    The grid is copied from the source: the model is the copy, which :func:`refresh` shows. To solve it, attach it
+    to a solver: ``solver = Solver(); solver.model = model``.
+
+    Args:
+        source: The source, or its name in the Pipeline Browser; the active source by default.
+        mesh_name: Name of the model; the file name of a reader by default.
+
+    Returns:
+        The model (also :func:`get_model`).
+
+    Raises:
+        ValueError: If there is no such source.
+        TypeError: If its output is not an unstructured grid.
+    """
+    from paraview import servermanager
+    from paraview.simple import FindSource, GetActiveSource, Hide
+
+    if isinstance(source, str):
+        name = source
+        source = FindSource(name)
+        if source is None:
+            raise ValueError(f"No source '{name}' in the pipeline.")
+    elif source is None:
+        source = GetActiveSource()
+        if source is None:
+            raise ValueError("No active source: select the dragged .vtu in the Pipeline Browser, or pass its name.")
+
+    state = _state()
+    if (state.shown is not None and source.GetXMLName() == "TrivialProducer"
+            and source.GetClientSideObject().GetOutputDataObject(0) is _current_grid()):
+        if isinstance(state.shown, vtkUnstructuredGrid):  # a bare grid shown: make it a model
+            state.shown = Model.from_grid(state.shown, mesh_name=mesh_name)
+        return get_model()
+
+    source.UpdatePipeline()
+    grid = servermanager.Fetch(source)
+    if not isinstance(grid, vtkUnstructuredGrid):
+        raise TypeError(f"The source gives a {type(grid).__name__}, not a vtkUnstructuredGrid (a .vtu mesh).")
+    if mesh_name is None and "FileName" in source.ListProperties():
+        file_name = source.FileName
+        file_name = file_name[0] if isinstance(file_name, (list, tuple)) and file_name else file_name
+        if isinstance(file_name, str) and file_name:
+            mesh_name = os.path.splitext(os.path.basename(file_name))[0]
+    model = Model.from_grid(grid, mesh_name=mesh_name)
+    Hide(source)
+    plot(model)
+    return model
+
+
+# ------------------------------------------------------------------------------------------------ selection
+
+
+def _element_type(selection_proxy: Any) -> Location | None:
+    """``"node"`` or ``"elem"``: what a ParaView selection selects, from its source properties; None when unknown.
+
+    ``ElementType`` (ParaView >= 5.11) counts as vtkDataObject attribute types (POINT 0, CELL 1), the older
+    ``FieldType`` as vtkSelectionNode field types (CELL 0, POINT 1); an enumeration may give its text.
+    """
+    properties = selection_proxy.ListProperties()
+    for name, point_value in (("ElementType", 0), ("FieldType", 1)):
+        if name not in properties:
+            continue
+        value = selection_proxy.GetPropertyValue(name)
+        if isinstance(value, (list, tuple)):
+            value = value[0] if value else None
+        if isinstance(value, str):
+            text = value.upper()
+            if "POINT" in text:
+                return "node"
+            if "CELL" in text:
+                return "elem"
+            continue
+        if value is not None:
+            return "node" if int(value) == point_value else "elem"
+    return None
+
+
+def paraview_selection(proxy: Any) -> tuple[np.ndarray, np.ndarray | None] | None:
+    """The points and cells of ParaView's current selection of the source ``proxy`` (interactive or *Find Data*).
+
+    The selection is evaluated on the source by an *Extract Selection* that is not added to the pipeline.
+
+    Returns:
+        ``(point ids, cell ids)``: for a cell selection the selected cells and all their points, for a point selection
+        the points and None; None when the source has no selection.
+    """
+    from paraview import servermanager
+
+    selection_input = proxy.GetSelectionInput(proxy.Port)
+    if selection_input is None:
+        return None
+    selection_proxy = servermanager._getPyProxy(selection_input)
+    extract = servermanager.filters.ExtractSelection(Input=proxy, Selection=selection_proxy)
+    try:
+        extract.UpdatePipeline()
+        extracted = servermanager.Fetch(extract)
+    finally:
+        del extract
+    if extracted is None or not hasattr(extracted, "GetPointData"):
+        LOGGER.warning("Set Value On Selection: the selection gave a %s; ignored.", type(extracted).__name__)
+        return None
+
+    def ids(data: Any, name: str) -> np.ndarray:
+        array = data.GetArray(name)
+        if array is None:
+            return np.zeros(0, dtype=np.int64)
+        return np.unique(vtknp.vtk_to_numpy(array).astype(np.int64, copy=False))
+
+    point_ids = ids(extracted.GetPointData(), "vtkOriginalPointIds")
+    cell_ids = ids(extracted.GetCellData(), "vtkOriginalCellIds")
+    kind = _element_type(selection_proxy)
+    if kind is None:  # e.g. a combination of selections: a cell selection extracts cells that are not vertices
+        types = (vtknp.vtk_to_numpy(extracted.GetDistinctCellTypesArray())
+                 if extracted.GetNumberOfCells() else np.zeros(0))
+        kind = "elem" if cell_ids.size and np.any(types != 1) else "node"  # 1 = VTK_VERTEX
+    return (point_ids, cell_ids) if kind == "elem" else (point_ids, None)
+
+
+def set_value_at(grid: vtkUnstructuredGrid, name: str, location: Location, ids: np.ndarray, value: float,
+                 component: int) -> None:
+    """Write ``value`` in component ``component`` (ignored for a scalar array) of the array ``name`` at ``ids``.
+
+    Raises:
+        ValueError: If the array has no such component.
+    """
+    array = meshes.get_array(grid, name, location)
+    values = vtknp.vtk_to_numpy(array)
+    if values.ndim == 1:
+        values[ids] = value
+    else:
+        if component >= values.shape[1]:
+            raise ValueError(f"The array '{name}' has {values.shape[1]} components: no component {component}.")
+        values[ids, component] = value
+    array.Modified()
+
+
+def set_value_on_selection(names: list[str], value: float, component: int = 0) -> dict[str, int]:
+    """Write ``value`` in the arrays ``names`` of the shown mesh, on ParaView's selection of the source
+    :data:`MESH_NAME`, or on the pyTEC3D selection arrays when ParaView has none, then :func:`refresh`.
+
+    An array that exists on both points and cells is written on both. On a point selection, cell arrays are left
+    unchanged (warning).
+
+    Returns:
+        The number of values written per array (``"<name> (point)"`` / ``"<name> (cell)"``).
+    """
+    grid = _current_grid()
+    selected = paraview_selection(_mesh_proxy(create=True))
+    if selected is None:
+        source = "the pyTEC3D selection arrays"
+        point_ids, cell_ids = selection.selected_ids(grid, "node"), selection.selected_ids(grid, "elem")
+    else:
+        source = "the ParaView selection"
+        point_ids, cell_ids = selected
+    written: dict[str, int] = {}
+    for name in names:
+        targets: tuple[tuple[Location, Any, np.ndarray | None], ...] = (
+            ("node", grid.GetPointData(), point_ids), ("elem", grid.GetCellData(), cell_ids))
+        for location, data, ids in targets:
+            if data.GetArray(name) is None:
+                continue
+            if ids is None:
+                LOGGER.warning("Set Value On Selection: '%s' is a cell array and the ParaView selection has points "
+                               "only; not written.", name)
+                continue
+            set_value_at(grid, name, location, ids, value, component)
+            written[f"{name} ({'point' if location == 'node' else 'cell'})"] = int(ids.size)
+    grid.Modified()
+    LOGGER.info("Set Value On Selection: %g (component %d) on %s: %s.", value, component, source,
+                ", ".join(f"{key} {count}" for key, count in written.items()) or "no array written")
+    refresh()
+    return written
+
+
+# ------------------------------------------------------------------------------------------------ plugin
 
 
 def _modified_callback(algorithm: Any) -> Any:
@@ -180,193 +518,52 @@ def _modified_callback(algorithm: Any) -> Any:
     return mark_modified
 
 
-@smproxy.filter(name="SelectExtractedData", label="Select Extracted Data")
-@smproperty.input(name="Input", port_index=0)
-@smdomain.datatype(dataTypes=["vtkUnstructuredGrid"], composite_data_supported=False)
-@smproperty.input(name="Extracted Selection", port_index=1)
-@smdomain.datatype(dataTypes=["vtkDataSet"], composite_data_supported=False)
-class SelectExtractedData(VTKPythonAlgorithmBase):
-    """Select on the model mesh (port 0) the points and cells of an *Extract Selection* output (port 1).
-
-    The extracted data identifies them by its ``vtkOriginalPointIds`` / ``vtkOriginalCellIds`` arrays.
-    """
-
-    def __init__(self) -> None:
-        self._mode: SelectionMode = "s"
-        VTKPythonAlgorithmBase.__init__(self, nInputPorts=2, nOutputPorts=1)
-
-    def FillInputPortInformation(self, port: int, info: Any) -> int:
-        info.Set(self.INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid" if port == 0 else "vtkDataSet")
-        if port == 1:
-            info.Set(self.INPUT_IS_OPTIONAL(), 1)
-        return 1
-
-    def RequestData(self, request: Any, in_info: Any, out_info: Any) -> int:
-        grid = _input_grid(in_info)
-        extracted = vtkDataSet.GetData(in_info[1])
-        if extracted is None:
-            LOGGER.warning("Select Extracted Data: nothing connected on port 1; selection unchanged.")
-            return 1
-        for location, data, ids_name in (
-            ("node", extracted.GetPointData(), "vtkOriginalPointIds"),
-            ("elem", extracted.GetCellData(), "vtkOriginalCellIds"),
-        ):
-            mask = np.zeros(grid.GetNumberOfPoints() if location == "node" else grid.GetNumberOfCells(), dtype=bool)
-            ids_array = data.GetArray(ids_name)
-            if ids_array is not None:
-                ids = vtknp.vtk_to_numpy(ids_array).astype(np.int64, copy=False)
-                mask[ids[(ids >= 0) & (ids < mask.size)]] = True
-            selection.apply_mask(grid, mask, location, self._mode)  # type: ignore[arg-type]
-        grid.Modified()
-        return 1
-
-    @smproperty.xml(_MODE_XML)
-    def SetMode(self, mode: int) -> None:
-        self._mode = _MODES[int(mode)]
-        self.Modified()
-
-
-@smproxy.filter(name="SelectByCriteria", label="Select")
-@smproperty.input(name="Input", port_index=0)
-@smdomain.datatype(dataTypes=["vtkUnstructuredGrid"], composite_data_supported=False)
-class Select(VTKPythonAlgorithmBase):
-    """Select points or cells by the value of an array (:func:`pytec3d.selection.select`).
-
-    *Values* is one number, a range ``min:max`` or a list ``a, b, c``. *Component* -1 selects on the magnitude.
-    """
-
-    def __init__(self) -> None:
-        self._array_name = ""
-        self._location: Location = "node"
-        self._mode: SelectionMode = "s"
-        self._component = 0
-        self._values_text = "0"
-        VTKPythonAlgorithmBase.__init__(self, nInputPorts=1, nOutputPorts=1)
-
-    def FillInputPortInformation(self, port: int, info: Any) -> int:
-        info.Set(self.INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid")
-        return 1
-
-    @staticmethod
-    def parse_values(text: str) -> float | tuple[float, float] | list[float]:
-        """``"1"`` -> 1.0, ``"0:2"`` -> (0.0, 2.0), ``"1, 3"`` -> [1.0, 3.0].
-
-        Raises:
-            ValueError: If the text is empty or not numbers.
-        """
-        text = text.strip()
-        if not text:
-            raise ValueError("The 'Values' field is empty.")
-        if ":" in text:
-            low, _, high = text.partition(":")
-            return float(low), float(high)
-        if "," in text:
-            return [float(part) for part in text.split(",") if part.strip()]
-        return float(text)
-
-    def RequestData(self, request: Any, in_info: Any, out_info: Any) -> int:
-        grid = _input_grid(in_info)
-        if not self._array_name:
-            LOGGER.warning("Select: no array chosen; selection unchanged.")
-            return 1
-        selection.select(
-            grid,
-            self._array_name,
-            self.parse_values(self._values_text),
-            component="magnitude" if self._component < 0 else self._component,
-            location=self._location,
-            mode=self._mode,
-        )
-        grid.Modified()
-        return 1
-
-    @smproperty.xml("""
-        <StringVectorProperty name="ArrayName" command="SetArrayName" number_of_elements="1" animateable="0">
-          <ArrayListDomain name="array_list" attribute_type="Scalars" input_domain_name="input_array">
-            <RequiredProperties><Property name="Input" function="Input"/></RequiredProperties>
-          </ArrayListDomain>
-        </StringVectorProperty>
-    """)
-    def SetArrayName(self, name: str) -> None:
-        self._array_name = name
-        self.Modified()
-
-    @smproperty.xml("""
-        <IntVectorProperty name="Type" command="SetSelectionType" number_of_elements="1" default_values="0">
-          <EnumerationDomain name="enum">
-            <Entry value="0" text="Node"/>
-            <Entry value="1" text="Element"/>
-          </EnumerationDomain>
-        </IntVectorProperty>
-    """)
-    def SetSelectionType(self, value: int) -> None:
-        self._location = _LOCATIONS[int(value)]
-        self.Modified()
-
-    @smproperty.xml(_MODE_XML)
-    def SetMode(self, value: int) -> None:
-        self._mode = _MODES[int(value)]
-        self.Modified()
-
-    @smproperty.intvector(name="Component", default_values=0)
-    @smdomain.intrange(min=-1, max=2)
-    def SetComponent(self, component: int) -> None:
-        if not -1 <= int(component) <= 2:
-            raise ValueError("Component must be in [-1, 2] (-1 = magnitude).")
-        self._component = int(component)
-        self.Modified()
-
-    @smproperty.stringvector(name="Values", default_values="0")
-    def SetValues(self, text: str) -> None:
-        self._values_text = text
-        self.Modified()
-
-
 @smproxy.filter(name="SetValueOnSelection", label="Set Value On Selection")
 @smproperty.input(name="Input", port_index=0)
 @smdomain.datatype(dataTypes=["vtkUnstructuredGrid"], composite_data_supported=False)
 class SetValueOnSelection(VTKPythonAlgorithmBase):
-    """Set a value in the checked arrays at the selected points / cells.
+    """Set a value in the checked arrays of the model mesh (the source ``Mesh``, its input) on the current selection.
 
-    As :func:`pytec3d.selection.set_value_on_selection`, for every checked array, on points and cells.
+    The selection is ParaView's selection of ``Mesh`` (interactive, or *Find Data*), or the pyTEC3D selection arrays
+    when there is none. Set the properties, *Apply*, then press *Set Value* (once per selection): the view is
+    refreshed. The work is done by the button, not by the pipeline, so the output is empty and the view can be
+    refreshed from it.
     """
 
     def __init__(self) -> None:
         self._component = 0
         self._value = 0.0
-        self._array_names: list[str] = []
         self._arrays = vtkDataArraySelection()
         self._arrays.AddObserver("ModifiedEvent", _modified_callback(self))  # type: ignore[arg-type]
-        VTKPythonAlgorithmBase.__init__(self, nInputPorts=1, nOutputPorts=1)
+        VTKPythonAlgorithmBase.__init__(self, nInputPorts=1, nOutputPorts=1, outputType="vtkUnstructuredGrid")
 
     def FillInputPortInformation(self, port: int, info: Any) -> int:
         info.Set(self.INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid")
         return 1
 
-    def RequestInformation(self, request: Any, in_info: Any, out_info: Any) -> int:
-        grid = vtkUnstructuredGrid.GetData(in_info[0])
+    def _input_grid(self) -> Any:
+        return self.GetInputDataObject(0, 0) if self.GetNumberOfInputConnections(0) else None
+
+    def _update_array_list(self) -> None:
+        grid = self._input_grid()
         if grid is None:
-            LOGGER.error("Set Value On Selection: no unstructured grid on the input.")
-            return 0
-        names = []
+            return
         for data in (grid.GetPointData(), grid.GetCellData()):
-            names += [data.GetArrayName(i) for i in range(data.GetNumberOfArrays())]
-        self._array_names = [name for name in names if name]
-        for name in self._array_names:
-            self._arrays.AddArray(name)
-        self._arrays.Modified()
+            for i in range(data.GetNumberOfArrays()):
+                name = data.GetArrayName(i)
+                if name and not self._arrays.ArrayExists(name):
+                    self._arrays.AddArray(name, False)
+
+    def RequestInformation(self, request: Any, in_info: Any, out_info: Any) -> int:
+        self._update_array_list()
         return 1
 
     def RequestData(self, request: Any, in_info: Any, out_info: Any) -> int:
-        grid = _input_grid(in_info)
-        for name in self._array_names:
-            if not self._arrays.ArrayIsEnabled(name):
-                continue
-            for location, data in (("node", grid.GetPointData()), ("elem", grid.GetCellData())):
-                if data.GetArray(name) is not None:
-                    selection.set_value_on_selection(grid, name, self._value, self._component, location)  # type: ignore[arg-type]
-        grid.Modified()
-        return 1
+        return 1  # empty output: the work is done by the Set Value button
+
+    def checked_arrays(self) -> list[str]:
+        return [self._arrays.GetArrayName(i) for i in range(self._arrays.GetNumberOfArrays())
+                if self._arrays.GetArraySetting(i)]
 
     @smproperty.dataarrayselection(name="Arrays")
     def GetDataArraySelection(self) -> Any:
@@ -388,6 +585,32 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
         self._value = float(value)
         self.Modified()
 
+    @smproperty.xml("""
+        <Property name="SetValueButton" label="Set Value" command="Run" panel_widget="command_button">
+          <Documentation>Write the value on the current selection of Mesh (Apply the properties first).</Documentation>
+        </Property>
+    """)
+    def Run(self) -> None:
+        """The *Set Value* button: write the value in the checked arrays on the current selection, refresh."""
+        try:
+            shown = _current_grid()
+            if self._input_grid() is not shown:
+                raise RuntimeError(f"apply the filter on the source '{MESH_NAME}' (the model mesh): its input is "
+                                   "another source. Show the model with from_paraview() or plot(solver).")
+            names = self.checked_arrays()
+            if not names:
+                LOGGER.warning("Set Value On Selection: no array checked; nothing written.")
+                return
+            set_value_on_selection(names, self._value, self._component)
+        except Exception as error:  # a button: report, do not let ParaView swallow it silently
+            LOGGER.error("Set Value On Selection: %s", error)
+            raise
+        finally:
+            self._update_array_list()
+
 
 if PARAVIEW_AVAILABLE:
-    setup_paraview_console()
+    try:
+        setup_paraview_console()
+    except Exception as _error:  # the plugin and its filter must load even so
+        LOGGER.warning("pytec3d console setup failed: %s", _error)

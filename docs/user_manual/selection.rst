@@ -196,6 +196,6 @@ Named arrays of the mesh (components exported by the mesher):
 Selections in ParaView
 ----------------------
 
-The pyTEC3D ParaView plugin provides the same operations as filters (*Select*, *Select Extracted Data*, *Set Value On
-Selection*): a selection can be made graphically and saved with the mesh, then used from a script with
-``selection.select(mesh, "selection_point", 1)``. See :doc:`paraview`.
+The pyTEC3D ParaView plugin writes values on a selection made graphically (*Set Value On Selection*, on ParaView's
+selection of the model mesh, or on these selection arrays when ParaView has none), and the ParaView console works on
+the shown model with this API. See :doc:`paraview`.
