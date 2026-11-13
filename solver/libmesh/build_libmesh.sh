@@ -63,7 +63,7 @@ if [ ! -e "${SRC_DIR}/.git" ]; then
 fi
 if [ ! -f "${SRC_DIR}/.pytec3d_patched" ]; then
   echo "==> Patching libMesh"
-  "${PYTHON}" "${HERE}/patches/patch_nedelec_prism_pyramid.py"    "${SRC_DIR}"
+  "${PYTHON}" "${HERE}/patches/patch_nedelec_one_3D.py"           "${SRC_DIR}"
   "${PYTHON}" "${HERE}/patches/cell_pyramid13_patch.py"           "${SRC_DIR}/src/geom/cell_pyramid13.C"
   "${PYTHON}" "${HERE}/patches/lagrange3D_shape_pyramid_patch.py" "${SRC_DIR}/src/fe/fe_lagrange_shape_3D.C"
   touch "${SRC_DIR}/.pytec3d_patched"
