@@ -7,6 +7,8 @@
  *      as the element types say) are set to zero.
  *   2. Point/nodal Dirichlet BCs from the "_F" point arrays of the model (with optional local-to-global rotation).
  *   3. DOF-coupling constraints from CP_* periodic-boundary node pairs.
+ * Vector fields: 3 components, or the in-plane x, y of a vector field on 2D elements (whose local frames must then
+ * be rotations about z); scalars and single components: one DOF per node.
  */
 #include "constraints.h"
 #include "pytec3d_system.h"
@@ -90,6 +92,21 @@ namespace
             pytec3d::logging::error_and_abort(msg.str());
         }
         return it->second;
+    }
+
+    /** @brief True when the rotation @p R maps the xy plane onto itself (a rotation about z): the only local frame in
+     *  which the in-plane components of a 2D vector field can be constrained or coupled without its absent z. */
+    bool is_rotation_about_z(const TensorValue<Real> &R)
+    {
+        const Real tol = 1e-10;
+        return std::abs(R(0, 2)) < tol && std::abs(R(1, 2)) < tol && std::abs(R(2, 0)) < tol && std::abs(R(2, 1)) < tol;
+    }
+
+    /** @brief The physical components of the vector variable @p var on @p node: 3, or 2 (x, y) for the variable of a
+     *  vector field on 2D elements, which has only the components of the element dimension. */
+    unsigned int n_node_components(const Node &node, unsigned int sys_num, unsigned int var)
+    {
+        return std::min(3u, node.n_comp(sys_num, var));
     }
 
 } // namespace
@@ -260,7 +277,9 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
                 std::numeric_limits<Real>::quiet_NaN(),
                 std::numeric_limits<Real>::quiet_NaN()};
 
-            // Retrieve the value of the constraints
+            // Retrieve the value of the constraints. The variable of a vector field on 2D elements has only the in-plane
+            // components x, y on its nodes (a planar field): the z component of _F does not apply there.
+            bool planar = false;
             for (unsigned int i = 0; i < max_components; ++i)
             {
                 const auto &component = components[i];
@@ -270,6 +289,11 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
                     component.var_number >= node_ptr->n_vars(sys_num) ||
                     node_ptr->n_dofs(sys_num, component.var_number) == 0)
                     continue;
+                if (component.dof_component >= n_node_components(*node_ptr, sys_num, component.var_number))
+                {
+                    planar = true;
+                    continue;
+                }
 
                 dof_id_type dof = node_ptr->dof_number(sys_num, component.var_number, component.dof_component);
 
@@ -292,9 +316,11 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
             if (!any_constraint)
                 continue;
 
-            // If all 3 components are constrained, we can directly apply the constraint without worrying about linear dependence.
+            // If all the components (3, or x and y of a planar field) are constrained, we can directly apply the
+            // constraint without worrying about linear dependence.
+            const unsigned int n_field_components = planar ? 2 : 3;
             bool full_vector_constraint = (max_components == 3);
-            for (unsigned int i = 0; i < max_components && full_vector_constraint; ++i)
+            for (unsigned int i = 0; i < n_field_components && full_vector_constraint; ++i)
             {
                 if (dofs[i] == libMesh::invalid_uint || std::isnan(values[i]))
                     full_vector_constraint = false;
@@ -311,14 +337,24 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
                 rotation_ready = true;
             }
 
+            // A planar field has no z: its local frame can only turn about z.
+            if (planar && !is_rotation_about_z(local_to_global))
+            {
+                std::ostringstream msg;
+                msg << "Point constraint: node " << node_id << " has a local frame that is not a rotation about z, "
+                    << "but the vector field '" << var_entry.first << "' has only the in-plane components x, y there "
+                    << "(2D elements).";
+                pytec3d::logging::error_and_abort(msg.str());
+            }
+
             // If all components are constrained, we can directly apply the rotated constraints
             // resulting from the explicit rotation of the original constraints, without worrying about linear dependence.
             if (full_vector_constraint)
             {
-                VectorValue<Real> local_values(values[0], values[1], values[2]);
+                VectorValue<Real> local_values(values[0], values[1], planar ? 0.0 : values[2]);
                 const VectorValue<Real> global_values(local_to_global * local_values);
 
-                for (unsigned int i = 0; i < 3; ++i)
+                for (unsigned int i = 0; i < n_field_components; ++i)
                 {
                     ConstraintEntry entry;
                     entry.value = global_values(i);
@@ -627,6 +663,8 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
                     libMesh::invalid_uint};
 
                 bool complete = true;
+                // The variable of a vector field on 2D elements has only the in-plane components x, y (planar).
+                bool planar = false;
                 const unsigned int sys_num = system.number();
                 for (const auto &component : components)
                 {
@@ -639,6 +677,21 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
                         complete = false;
                         break;
                     }
+                    const unsigned int n_first = n_node_components(*node_first, sys_num, component.var_number);
+                    const unsigned int n_second = n_node_components(*node_second, sys_num, component.var_number);
+                    if (n_first != n_second)
+                    {
+                        std::ostringstream msg;
+                        msg << "Coupling constraint: the vector field '" << vec_entry.first << "' has " << n_first
+                            << " components on master node " << node_first->id() << " but " << n_second
+                            << " on slave node " << node_second->id() << ".";
+                        pytec3d::logging::error_and_abort(msg.str());
+                    }
+                    if (component.dof_component >= n_first)
+                    {
+                        planar = true;
+                        continue;
+                    }
 
                     dofs_first[component.component_index] =
                         node_first->dof_number(sys_num, component.var_number, component.dof_component);
@@ -646,7 +699,8 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
                         node_second->dof_number(sys_num, component.var_number, component.dof_component);
                 }
 
-                for (unsigned int i = 0; i < 3; ++i)
+                const unsigned int n_field_components = planar ? 2 : 3;
+                for (unsigned int i = 0; i < n_field_components; ++i)
                 {
                     if (dofs_first[i] == libMesh::invalid_uint || dofs_second[i] == libMesh::invalid_uint)
                     {
@@ -674,10 +728,21 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
                 const TensorValue<Real> transform =
                     TensorValue<Real>(second_local_to_global * first_global_to_local);
 
-                for (unsigned int i = 0; i < 3; ++i)
+                // A planar field has no z: the transform between the frames of the pair can only turn about z.
+                if (planar && !is_rotation_about_z(transform))
+                {
+                    std::ostringstream msg;
+                    msg << "Coupling constraint: the local frames of master node " << node_first->id()
+                        << " and slave node " << node_second->id() << " differ by more than a rotation about z, "
+                        << "but the vector field '" << vec_entry.first
+                        << "' has only the in-plane components x, y there (2D elements).";
+                    pytec3d::logging::error_and_abort(msg.str());
+                }
+
+                for (unsigned int i = 0; i < n_field_components; ++i)
                 {
                     ConstraintEntry constraint_entry;
-                    for (unsigned int j = 0; j < 3; ++j)
+                    for (unsigned int j = 0; j < n_field_components; ++j)
                         constraint_entry.row[dofs_first[j]] =
                             transform(i, j);
                     constraints.emplace(dofs_second[i], constraint_entry);
