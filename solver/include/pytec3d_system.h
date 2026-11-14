@@ -21,12 +21,12 @@
 #include <libmesh/linear_solver.h>
 #include <libmesh/nonlinear_implicit_system.h>
 #include <libmesh/sparse_matrix.h>
-#include <libmesh/system_subset.h>
 #include <libmesh/transient_system.h>
 #include <libmesh/wrapped_petsc.h>
 #include <petscksp.h>
 
 #include "constraints.h"
+#include "element_evaluator.h"
 #include "pytec3d_system_base.h"
 #include "reduced_linear_solver.h"
 #include "solver_configuration.h"
@@ -49,6 +49,12 @@ public:
     /** @brief The solver settings of the next solve; a change of the linear solver settings updates the system matrix. */
     virtual void apply_solver_settings(const SolverSettings &settings) = 0;
     virtual const NodalLoadInjectorElemByVarMap *ensure_nodal_load_injector_map() = 0;
+
+    /** @brief The operators of the static nodal / element fields of each active local element (in the order of the
+     * mesh's local elements), kept in memory from the assembly of the operators: {F u, F du/dt, F d2u/dt2}. */
+    using FieldOperators = std::vector<std::vector<libMesh::DenseMatrix<libMesh::Number>>>;
+    virtual const FieldOperators &nodal_field_operators() const = 0;
+    virtual const FieldOperators &element_field_operators() const = 0;
 };
 
 template <typename SysLike>
@@ -104,19 +110,43 @@ public:
     libMesh::LinearSolver<libMesh::Number> *get_linear_solver() const override;
     void apply_solver_settings(const SolverSettings &settings) override;
 
-    virtual void delete_rows_cols_constrained_dofs() = 0;
+    /** @brief The constraints of the DofMap to the linear solver: P and g (@p rows_changed: other rows, a new P). */
+    void apply_constraints(bool rows_changed);
     /** @brief The solver of the linear systems: of the system, or of the Newton iterations. */
     virtual ReducedPetscLinearSolver &reduced_linear_solver() = 0;
 
     const NodalLoadInjectorElemByVarMap *ensure_nodal_load_injector_map() override;
 
 protected:
+    /** @brief The matrix holding K_eff = K + c_v C + c_a M: the system matrix (linear) or linear_stiffness (Newton). */
+    virtual libMesh::SparseMatrix<libMesh::Number> &effective_matrix() = 0;
+    /** @brief K_eff of the scheme of the current step, from the K_eff of the previous scheme (+ dc_v C + dc_a M). */
+    void update_effective_matrix();
+    /** @brief The right-hand side F - C h_v - M h_a of the step: the element right-hand sides (loads, magnetization,
+     * nodal loads) and the history of the step as global products. */
+    void assemble_rhs(libMesh::NumericVector<libMesh::Number> &F);
+    /** @brief The active local elements, in order (the element loops run over them on the threads). */
+    const std::vector<const libMesh::Elem *> &local_elements();
+
     std::unique_ptr<GlobalConstraintsObject<ImplicitSys>> global_constraints_object_;
     std::unique_ptr<PetscSolverConfiguration> solver_config_;
-    std::unique_ptr<libMesh::SystemSubset> subset_solve_holder_;
     std::unique_ptr<NodalLoadInjectorElemByVarMap> nodal_load_injector_map_;
-    bool element_matrices_written_ = false; ///< The element matrices of this model are in the emat files.
+    std::vector<const libMesh::Elem *> local_elements_;
+    FieldOperators nodal_operators_, element_operators_;
+    /// The rhs bases of the local elements (ElementEvaluator::rhs_basis()), computed with the operators; an element
+    /// without one (rhs_cached_ false) has its rhs built with its FEs at every step.
+    std::vector<pytec3d::ElementEvaluator::RhsBasis> rhs_bases_;
+    std::vector<char> rhs_cached_;
+
+public:
+    const FieldOperators &nodal_field_operators() const override { return nodal_operators_; }
+    const FieldOperators &element_field_operators() const override { return element_operators_; }
+
+protected:
+    bool element_matrices_written_ = false; ///< K, C, M assembled, the field operators stored (once per model).
     bool solver_settings_changed_ = false;  ///< The linear solver settings changed: update the system matrix.
+    bool has_damping_ = false, has_mass_ = false; ///< C (M) has entries.
+    libMesh::Real keff_c_v_ = 0.0, keff_c_a_ = 0.0; ///< The coefficients of C and M in effective_matrix().
 };
 
 class pyTEC3DLinearSystem : public pyTEC3DDOFSystem<libMesh::LinearImplicitSystem>
@@ -129,8 +159,10 @@ public:
     void assemble_system() override;
     void solve() override;
     void post_init() override;
-    void delete_rows_cols_constrained_dofs() override;
     ReducedPetscLinearSolver &reduced_linear_solver() override;
+
+protected:
+    libMesh::SparseMatrix<libMesh::Number> &effective_matrix() override { return this->get_system_matrix(); }
 };
 
 class pyTEC3DNonLinearSystem : public pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>
@@ -148,13 +180,15 @@ public:
     void solve() override;
     void post_init() override;
     void apply_solver_settings(const SolverSettings &settings) override;
-    void delete_rows_cols_constrained_dofs() override;
     ReducedPetscLinearSolver &reduced_linear_solver() override;
 
     /** @brief As pyTEC3DDOFSystem, and the law-output rates of the new step become the old ones. */
     void init_time_step(const TimeStepInput &time_step) override;
     /** @brief As pyTEC3DDOFSystem, and the rates of the law outputs under dt() (law_rates_). */
     void update_time_derivatives() override;
+
+protected:
+    libMesh::SparseMatrix<libMesh::Number> &effective_matrix() override { return this->get_matrix("linear_stiffness"); }
 
 private:
     /** @brief The first and second time derivatives of the law outputs under dt() of one element (q' and q'' of
@@ -177,6 +211,10 @@ private:
                                   libMesh::NonlinearImplicitSystem &S);
 
     void assemble_system_impl(bool assemble_jacobian, bool assemble_residual);
+    /** @brief The local elements with laws selected: the only ones evaluated at each Newton iteration. */
+    const std::vector<const libMesh::Elem *> &law_elements();
+    std::vector<const libMesh::Elem *> law_elements_;
+    bool law_elements_ready_ = false;
     /** @brief Adds the current iterate, of residual norm @p residual, to the Newton history of the step report. */
     void record_newton_iterate(libMesh::Real residual);
 

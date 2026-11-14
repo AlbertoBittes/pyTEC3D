@@ -1,34 +1,49 @@
 /**
  * @file reduced_linear_solver.cpp
- * @brief ReducedPetscLinearSolver: restricted PETSc solves keeping the reduced system and its factorization.
+ * @brief ReducedPetscLinearSolver: constraints as a prolongation P, the reduced system P^T A P (reduced_linear_solver.h).
  */
 #include "reduced_linear_solver.h"
 
-#include <libmesh/petsc_macro.h>
+#include <algorithm>
+#include <map>
+#include <set>
+
 #include <libmesh/petsc_matrix_base.h>
+#include <libmesh/solver_configuration.h>
 #include <libmesh/petsc_solver_exception.h>
 #include <libmesh/petsc_vector.h>
-#include <libmesh/solver_configuration.h>
 
 #include "logging.h"
 
-using libMesh::libmesh_ignore;
-using Base = libMesh::PetscLinearSolver<libMesh::Number>;
+using libMesh::libmesh_ignore; // used by the LibmeshPetscCall macros
 
-ReducedPetscLinearSolver::ReducedPetscLinearSolver(const libMesh::Parallel::Communicator &comm)
-    : Base(comm)
+namespace
+{
+    using Base = libMesh::PetscLinearSolver<libMesh::Number>;
+    using libMesh::dof_id_type;
+} // namespace
+
+ReducedPetscLinearSolver::ReducedPetscLinearSolver(const libMesh::Parallel::Communicator &comm) : Base(comm)
 {
 }
 
 void ReducedPetscLinearSolver::clear()
 {
-    clear_reduced_system();
+    P_.reset_to_zero();
+    g_.reset_to_zero();
+    free_.reset_to_zero();
+    submat_.reset_to_zero();
+    subrhs_.reset_to_zero();
+    subsolution_.reset_to_zero();
+    parent_ = nullptr;
+    parent_state_ = -1;
+    pattern_valid_ = false;
     Base::clear();
 }
 
 void ReducedPetscLinearSolver::init(const char *name)
 {
-    // The prefix of the first init, given again to the KSP of each full factorization (ksp() calls init() without).
+    // The prefix of the first init, given again to the KSP of each full factorization.
     if (!this->initialized())
     {
         has_prefix_ = name != nullptr;
@@ -37,79 +52,146 @@ void ReducedPetscLinearSolver::init(const char *name)
     Base::init(name);
 }
 
-void ReducedPetscLinearSolver::init_systems(const libMesh::System &system)
+void ReducedPetscLinearSolver::reset_ksp()
 {
-    system_ = &system;
-    Base::init_systems(system);
+    // A new KSP: the operators of the previous one may have other sizes. P and g are kept.
+    Base::clear();
+    Base::init(has_prefix_ ? prefix_.c_str() : nullptr);
 }
 
-void ReducedPetscLinearSolver::restrict_solve_to(const std::vector<unsigned int> *const dofs,
-                                                 const libMesh::SubsetSolveMode subset_solve_mode)
+void ReducedPetscLinearSolver::set_constraints(libMesh::DofMap &dof_map, bool rows_changed)
 {
-    if (subset_solve_mode != libMesh::SUBSET_ZERO)
-        pytec3d::logging::error_and_abort("ReducedPetscLinearSolver::restrict_solve_to: only SUBSET_ZERO is supported.");
-    const bool has_subset = dofs != nullptr;
-    if (has_subset == has_subset_ && (!has_subset || *dofs == dofs_))
-        return; // the same subset: the reduced system is kept
-    has_subset_ = has_subset;
-    dofs_ = has_subset ? *dofs : std::vector<unsigned int>();
-    clear_reduced_system();
-}
+    const auto &comm = this->comm();
+    const unsigned int n_ranks = comm.size();
+    const dof_id_type first = dof_map.first_dof(), end = dof_map.end_dof();
+    const libMesh::DofConstraints &rows = dof_map.get_dof_constraints();
+    const libMesh::DofConstraintValueMap &values = dof_map.get_primal_constraint_values();
 
-void ReducedPetscLinearSolver::clear_reduced_system()
-{
-    is_.reset_to_zero();
-    scatter_.reset_to_zero();
-    submat_.reset_to_zero();
-    subrhs_.reset_to_zero();
-    subsolution_.reset_to_zero();
-    parent_ = nullptr;
-    parent_nonzeros_ = -1.0;
-    pattern_valid_ = false;
-}
-
-void ReducedPetscLinearSolver::build(Mat parent, Vec rhs)
-{
-    // A new KSP: the operators of the previous one may have other sizes.
-    const std::string prefix = prefix_;
-    const bool has_prefix = has_prefix_;
-    this->clear();
-    this->init(has_prefix ? prefix.c_str() : nullptr);
-    if (system_)
-        Base::init_systems(*system_);
-
-    PetscInt n_local = 0;
-    PetscInt *petsc_dofs = nullptr;
-    if (has_subset_)
+    // The constrained DOFs of every rank, on every rank: the index of any unconstrained DOF in the reduced system.
+    std::vector<dof_id_type> constrained;
+    for (const auto &[dof, row] : rows)
     {
-        n_local = static_cast<PetscInt>(dofs_.size());
-        LibmeshPetscCall(PetscMalloc1(n_local, &petsc_dofs));
-        for (PetscInt i = 0; i < n_local; ++i)
-            petsc_dofs[i] = static_cast<PetscInt>(dofs_[i]);
+        libMesh::libmesh_ignore(row);
+        if (dof >= first && dof < end)
+            constrained.push_back(dof);
     }
-    else
+    std::sort(constrained.begin(), constrained.end());
+    std::vector<dof_id_type> all_constrained = constrained;
+    comm.allgather(all_constrained, false);
+    std::sort(all_constrained.begin(), all_constrained.end());
+
+    std::vector<dof_id_type> rank_first(n_ranks + 1, 0);
+    for (unsigned int r = 0; r < n_ranks; ++r)
+        rank_first[r + 1] = dof_map.end_dof(r);
+    const auto constrained_between = [&](dof_id_type from, dof_id_type to)
     {
-        PetscInt first = 0, last = 0;
-        LibmeshPetscCall(VecGetOwnershipRange(rhs, &first, &last));
-        n_local = last - first;
-        LibmeshPetscCall(PetscMalloc1(n_local, &petsc_dofs));
-        for (PetscInt i = 0; i < n_local; ++i)
-            petsc_dofs[i] = first + i;
+        return static_cast<PetscInt>(std::lower_bound(all_constrained.begin(), all_constrained.end(), to) -
+                                     std::lower_bound(all_constrained.begin(), all_constrained.end(), from));
+    };
+    std::vector<PetscInt> free_first(n_ranks + 1, 0);
+    for (unsigned int r = 0; r < n_ranks; ++r)
+        free_first[r + 1] = free_first[r] + static_cast<PetscInt>(rank_first[r + 1] - rank_first[r]) -
+                            constrained_between(rank_first[r], rank_first[r + 1]);
+    const PetscInt rank = static_cast<PetscInt>(comm.rank());
+    n_free_local_ = free_first[static_cast<std::size_t>(rank) + 1] - free_first[static_cast<std::size_t>(rank)];
+    const PetscInt n_free = free_first.back();
+    const auto free_index = [&](dof_id_type dof)
+    {
+        if (std::binary_search(all_constrained.begin(), all_constrained.end(), dof))
+            pytec3d::logging::error_and_abort("Constraints: DOF " + std::to_string(dof) +
+                                              " is the master of a constraint row but is constrained itself.");
+        const auto r = static_cast<std::size_t>(std::upper_bound(rank_first.begin(), rank_first.end(), dof) -
+                                                rank_first.begin()) - 1;
+        return free_first[r] + static_cast<PetscInt>(dof - rank_first[r]) - constrained_between(rank_first[r], dof);
+    };
+
+    const PetscInt n_rows = static_cast<PetscInt>(end - first);
+    const PetscInt n_global = static_cast<PetscInt>(dof_map.n_dofs());
+    if (rows_changed || !P_)
+    {
+        // P: one row per owned DOF; an unconstrained DOF its column, a constrained one its masters.
+        const PetscInt col0 = free_first[static_cast<std::size_t>(rank)], col1 = free_first[static_cast<std::size_t>(rank) + 1];
+        std::vector<PetscInt> d_nnz(static_cast<std::size_t>(n_rows), 0), o_nnz(static_cast<std::size_t>(n_rows), 0);
+        std::vector<PetscInt> free_dofs;
+        for (PetscInt i = 0; i < n_rows; ++i)
+        {
+            const dof_id_type dof = first + static_cast<dof_id_type>(i);
+            const auto row = rows.find(dof);
+            if (row == rows.end())
+            {
+                d_nnz[static_cast<std::size_t>(i)] = 1;
+                free_dofs.push_back(static_cast<PetscInt>(dof));
+                continue;
+            }
+            for (const auto &[master, c] : row->second)
+            {
+                libMesh::libmesh_ignore(c);
+                const PetscInt col = free_index(master);
+                (col >= col0 && col < col1 ? d_nnz : o_nnz)[static_cast<std::size_t>(i)]++;
+            }
+        }
+        P_.reset_to_zero();
+        LibmeshPetscCall(MatCreateAIJ(comm.get(), n_rows, n_free_local_, n_global, n_free, 0, d_nnz.data(), 0, o_nnz.data(),
+                                      P_.get()));
+        for (PetscInt i = 0; i < n_rows; ++i)
+        {
+            const dof_id_type dof = first + static_cast<dof_id_type>(i);
+            const auto row = rows.find(dof);
+            const PetscInt r = static_cast<PetscInt>(dof);
+            if (row == rows.end())
+            {
+                const PetscInt col = free_index(dof);
+                LibmeshPetscCall(MatSetValue(P_, r, col, 1.0, INSERT_VALUES));
+                continue;
+            }
+            for (const auto &[master, c] : row->second)
+                if (c != 0.0)
+                    LibmeshPetscCall(MatSetValue(P_, r, free_index(master), c, INSERT_VALUES));
+        }
+        LibmeshPetscCall(MatAssemblyBegin(P_, MAT_FINAL_ASSEMBLY));
+        LibmeshPetscCall(MatAssemblyEnd(P_, MAT_FINAL_ASSEMBLY));
+
+        // The scatter of the unconstrained DOFs: global vector <-> reduced vector, in order.
+        libMesh::WrappedPetsc<IS> from, to;
+        LibmeshPetscCall(ISCreateGeneral(comm.get(), static_cast<PetscInt>(free_dofs.size()), free_dofs.data(),
+                                         PETSC_COPY_VALUES, from.get()));
+        LibmeshPetscCall(ISCreateStride(comm.get(), n_free_local_, col0, 1, to.get()));
+        libMesh::WrappedPetsc<Vec> u, w;
+        LibmeshPetscCall(MatCreateVecs(P_, w.get(), u.get()));
+        free_.reset_to_zero();
+        LibmeshPetscCall(VecScatterCreate(u, from, w, to, free_.get()));
+
+        // Another P: another reduced system, a full factorization.
+        submat_.reset_to_zero();
+        subrhs_.reset_to_zero();
+        subsolution_.reset_to_zero();
+        parent_ = nullptr;
+        pattern_valid_ = false;
     }
-    LibmeshPetscCall(ISCreateGeneral(this->comm().get(), n_local, petsc_dofs, PETSC_OWN_POINTER, is_.get()));
 
-    LibmeshPetscCall(VecCreate(this->comm().get(), subrhs_.get()));
-    LibmeshPetscCall(VecSetSizes(subrhs_, n_local, PETSC_DECIDE));
-    LibmeshPetscCall(VecSetFromOptions(subrhs_));
-    LibmeshPetscCall(VecDuplicate(subrhs_, subsolution_.get()));
-    LibmeshPetscCall(VecScatterCreate(rhs, is_, subrhs_, nullptr, scatter_.get()));
-    LibmeshPetscCall(LibMeshCreateSubMatrix(parent, is_, is_, MAT_INITIAL_MATRIX, submat_.get()));
+    // g: the values of the owned constrained DOFs.
+    g_.reset_to_zero();
+    LibmeshPetscCall(MatCreateVecs(P_, nullptr, g_.get()));
+    LibmeshPetscCall(VecZeroEntries(g_));
+    for (const dof_id_type dof : constrained)
+    {
+        const auto it = values.find(dof);
+        if (it != values.end() && it->second != 0.0)
+            LibmeshPetscCall(VecSetValue(g_, static_cast<PetscInt>(dof), it->second, INSERT_VALUES));
+    }
+    LibmeshPetscCall(VecAssemblyBegin(g_));
+    LibmeshPetscCall(VecAssemblyEnd(g_));
+}
 
-    MatInfo info;
-    LibmeshPetscCall(MatGetInfo(parent, MAT_GLOBAL_SUM, &info));
-    parent_ = parent;
-    parent_nonzeros_ = info.nz_used;
-    pattern_valid_ = true;
+void ReducedPetscLinearSolver::project_residual(libMesh::NumericVector<libMesh::Number> &r_in)
+{
+    auto *r = libMesh::cast_ptr<libMesh::PetscVector<libMesh::Number> *>(&r_in);
+    r->close();
+    libMesh::WrappedPetsc<Vec> w;
+    LibmeshPetscCall(MatCreateVecs(P_, w.get(), nullptr));
+    LibmeshPetscCall(MatMultTranspose(P_, r->vec(), w));
+    LibmeshPetscCall(VecZeroEntries(r->vec()));
+    libMesh::VecScatterBeginEnd(this->comm(), free_, w, r->vec(), INSERT_VALUES, SCATTER_REVERSE);
 }
 
 std::pair<unsigned int, libMesh::Real> ReducedPetscLinearSolver::solve(libMesh::SparseMatrix<libMesh::Number> &matrix_in,
@@ -121,6 +203,8 @@ std::pair<unsigned int, libMesh::Real> ReducedPetscLinearSolver::solve(libMesh::
 {
     if (&precond_in != &matrix_in)
         pytec3d::logging::error_and_abort("ReducedPetscLinearSolver::solve: the preconditioning matrix must be the system matrix.");
+    if (!P_)
+        pytec3d::logging::error_and_abort("ReducedPetscLinearSolver::solve: no constraints (set_constraints()).");
     auto *matrix = libMesh::cast_ptr<libMesh::PetscMatrixBase<libMesh::Number> *>(&matrix_in);
     auto *solution = libMesh::cast_ptr<libMesh::PetscVector<libMesh::Number> *>(&solution_in);
     auto *rhs = libMesh::cast_ptr<libMesh::PetscVector<libMesh::Number> *>(&rhs_in);
@@ -129,29 +213,48 @@ std::pair<unsigned int, libMesh::Real> ReducedPetscLinearSolver::solve(libMesh::
     solution->close();
     rhs->close();
 
-    // The level, the same on all the ranks: full without a reduced system of this subset and pattern, or when the
-    // matrix has another number of nonzeros; else reused (the same matrix) or numeric.
+    // The level, the same on all the ranks: full without a reduced system of this P and matrix (and its pattern);
+    // else reused (the same matrix) or numeric.
     const Mat parent = matrix->mat();
-    MatInfo info;
-    LibmeshPetscCall(MatGetInfo(parent, MAT_GLOBAL_SUM, &info));
-    bool full = !submat_ || !pattern_valid_ || parent != parent_ || info.nz_used != parent_nonzeros_;
+    PetscObjectState state = 0;
+    LibmeshPetscCall(MatGetNonzeroState(parent, &state));
+    bool full = !submat_ || !pattern_valid_ || parent != parent_ || state != parent_state_;
     this->comm().max(full);
     const Factorization level = full ? Factorization::full
                                 : this->same_preconditioner ? Factorization::reused
                                                             : Factorization::numeric;
     if (level == Factorization::full)
-        build(parent, rhs->vec());
+    {
+        reset_ksp();
+        submat_.reset_to_zero();
+        LibmeshPetscCall(MatPtAP(parent, P_, MAT_INITIAL_MATRIX, PETSC_DETERMINE, submat_.get()));
+        subrhs_.reset_to_zero();
+        subsolution_.reset_to_zero();
+        LibmeshPetscCall(MatCreateVecs(submat_, subsolution_.get(), subrhs_.get()));
+        parent_ = parent;
+        parent_state_ = state;
+        pattern_valid_ = true;
+    }
     else if (level == Factorization::numeric)
         // The values of the same nonzeros: PETSc keeps the ordering and the analysis of the factorization.
-        LibmeshPetscCall(LibMeshCreateSubMatrix(parent, is_, is_, MAT_REUSE_MATRIX, submat_.get()));
+        LibmeshPetscCall(MatPtAP(parent, P_, MAT_REUSE_MATRIX, PETSC_DETERMINE, submat_.get()));
+
+    // The reduced right-hand side: P^T (b - A g); a Newton step: b, projected already (project_residual()).
+    if (homogeneous_)
+        libMesh::VecScatterBeginEnd(this->comm(), free_, rhs->vec(), subrhs_, INSERT_VALUES, SCATTER_FORWARD);
+    else
+    {
+        libMesh::WrappedPetsc<Vec> t;
+        LibmeshPetscCall(VecDuplicate(rhs->vec(), t.get()));
+        LibmeshPetscCall(MatMult(parent, g_, t));
+        LibmeshPetscCall(VecAYPX(t, -1.0, rhs->vec()));
+        LibmeshPetscCall(MatMultTranspose(P_, t, subrhs_));
+    }
+    libMesh::VecScatterBeginEnd(this->comm(), free_, solution->vec(), subsolution_, INSERT_VALUES, SCATTER_FORWARD);
 
     const KSP ksp = this->ksp();
     LibmeshPetscCall(KSPSetOperators(ksp, submat_, submat_));
     LibmeshPetscCall(KSPSetReusePreconditioner(ksp, level == Factorization::reused ? PETSC_TRUE : PETSC_FALSE));
-
-    libMesh::VecScatterBeginEnd(this->comm(), scatter_, rhs->vec(), subrhs_, INSERT_VALUES, SCATTER_FORWARD);
-    libMesh::VecScatterBeginEnd(this->comm(), scatter_, solution->vec(), subsolution_, INSERT_VALUES, SCATTER_FORWARD);
-
     // As PetscLinearSolver::solve: the tolerances of the caller or of the settings, the command line, then the
     // pyTEC3D settings.
     const double rel_tol = this->get_real_solver_setting("rel_tol", tol);
@@ -168,8 +271,10 @@ std::pair<unsigned int, libMesh::Real> ReducedPetscLinearSolver::solve(libMesh::
     LibmeshPetscCall(KSPGetIterationNumber(ksp, &its));
     LibmeshPetscCall(KSPGetResidualNorm(ksp, &residual));
 
-    LibmeshPetscCall(VecZeroEntries(solution->vec()));
-    libMesh::VecScatterBeginEnd(this->comm(), scatter_, subsolution_, solution->vec(), INSERT_VALUES, SCATTER_REVERSE);
+    // u = P w (+ g).
+    LibmeshPetscCall(MatMult(P_, subsolution_, solution->vec()));
+    if (!homogeneous_)
+        LibmeshPetscCall(VecAXPY(solution->vec(), 1.0, g_));
 
     last_ = level;
     switch (level)

@@ -5,6 +5,8 @@
 #include "element_type.h"
 
 #include <algorithm>
+#include <atomic>
+#include <unordered_map>
 
 #include <libmesh/dof_map.h>
 #include <libmesh/fe_interface.h>
@@ -23,6 +25,8 @@ namespace pytec3d
         }
 
         constexpr std::size_t kNumOperations = static_cast<std::size_t>(Operation::Parameters) + 1;
+
+        std::atomic<std::size_t> next_instance{1};
 
         std::size_t needed_index(registry::Domain domain, Operation operation, bool nonlinear)
         {
@@ -91,7 +95,7 @@ namespace pytec3d
     }
 
     ElementType::ElementType(registry::ElementTypeId id, const ElementTypeOptions &options)
-        : spec_(&formulation::spec(id)), options_(options)
+        : spec_(&formulation::spec(id)), options_(options), instance_(next_instance++)
     {
         const std::string context = "element type '" + std::string(name()) + "'";
         if (options.order < static_cast<unsigned int>(libMesh::FIRST))
@@ -102,29 +106,13 @@ namespace pytec3d
             fail(context + " has no finite element.");
 
         // One Gauss rule for every FE, so that all the nablas share the quadrature points.
-        unsigned int quadrature_order = 0;
         for (const formulation::FESpec &fe : spec_->fes)
         {
             const libMesh::FEType type(order(fe.order), fe.family);
-            quadrature_order = std::max(quadrature_order, static_cast<unsigned int>(type.default_quadrature_order()));
+            quadrature_order_ = std::max(quadrature_order_, static_cast<unsigned int>(type.default_quadrature_order()));
         }
-        quadrature_ = std::make_unique<libMesh::QGauss>(dimension(), static_cast<libMesh::Order>(quadrature_order));
-
-        for (const formulation::FESpec &fe : spec_->fes)
-        {
-            fes_.push_back(libMesh::FEAbstract::build(dimension(), libMesh::FEType(order(fe.order), fe.family)));
-            fes_.back()->attach_quadrature_rule(quadrature_.get());
-        }
-        // Any of them can give the geometry of an operation.
-        for (auto &fe : fes_)
-        {
-            fe->get_JxW();
-            fe->get_xyz();
-        }
-
-        nablas_.reserve(spec_->nablas.size());
-        for (const formulation::NablaSpec &nabla : spec_->nablas)
-            nablas_.emplace_back(nabla, *fes_[nabla.fe], dimension(), options.axisymmetric);
+        // The FEs of this thread, built now: the checks of their construction (and the FE families) fail here.
+        workspace();
 
         for (const formulation::LawSpec &law : spec_->laws)
             laws_ |= registry::bit(law.id);
@@ -162,7 +150,7 @@ namespace pytec3d
                     const auto operation = static_cast<Operation>(o);
                     if (operation == Operation::Parameters)
                         continue;
-                    std::vector<libMesh::FEAbstract *> &needed = needed_fes_[needed_index(domain, operation, nonlinear)];
+                    std::vector<std::size_t> &needed = needed_fes_[needed_index(domain, operation, nonlinear)];
                     bool computes = false;
                     const auto add_kernel = [&](std::size_t k)
                     {
@@ -170,7 +158,7 @@ namespace pytec3d
                         {
                             if (nabla < 0)
                                 continue;
-                            libMesh::FEAbstract *fe = fes_[spec_->nablas[static_cast<std::size_t>(nabla)].fe].get();
+                            const std::size_t fe = spec_->nablas[static_cast<std::size_t>(nabla)].fe;
                             if (std::find(needed.begin(), needed.end(), fe) == needed.end())
                                 needed.push_back(fe);
                         }
@@ -210,7 +198,7 @@ namespace pytec3d
                         }
                     // Terms without nabla (a coefficient alone) still need the quadrature points.
                     if (computes && needed.empty())
-                        needed.push_back(fes_.front().get());
+                        needed.push_back(0);
                 }
     }
 
@@ -277,9 +265,36 @@ namespace pytec3d
         if (operation == Operation::Parameters)
             return nullptr;
         const auto &needed = needed_fes_.at(needed_index(domain, operation, laws != 0));
-        for (libMesh::FEAbstract *fe : needed)
-            fe->reinit(&elem);
-        return needed.empty() ? nullptr : needed.front();
+        Workspace &work = workspace();
+        for (const std::size_t fe : needed)
+            work.fes[fe]->reinit(&elem);
+        return needed.empty() ? nullptr : work.fes[needed.front()].get();
+    }
+
+    ElementType::Workspace &ElementType::workspace() const
+    {
+        // The FE objects are reinit()ed on an element: each thread has its own (built at its first use of the type).
+        thread_local std::unordered_map<std::size_t, std::unique_ptr<Workspace>> workspaces;
+        std::unique_ptr<Workspace> &work = workspaces[instance_];
+        if (work)
+            return *work;
+        work = std::make_unique<Workspace>();
+        work->quadrature = std::make_unique<libMesh::QGauss>(dimension(), static_cast<libMesh::Order>(quadrature_order_));
+        for (const formulation::FESpec &fe : spec_->fes)
+        {
+            work->fes.push_back(libMesh::FEAbstract::build(dimension(), libMesh::FEType(order(fe.order), fe.family)));
+            work->fes.back()->attach_quadrature_rule(work->quadrature.get());
+        }
+        // Any of them can give the geometry of an operation.
+        for (auto &fe : work->fes)
+        {
+            fe->get_JxW();
+            fe->get_xyz();
+        }
+        work->nablas.reserve(spec_->nablas.size());
+        for (const formulation::NablaSpec &nabla : spec_->nablas)
+            work->nablas.emplace_back(nabla, *work->fes[nabla.fe], dimension(), options_.axisymmetric);
+        return *work;
     }
 
     const std::vector<unsigned int> &ElementType::variable_numbers(const libMesh::System &system) const

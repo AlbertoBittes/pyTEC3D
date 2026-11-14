@@ -218,9 +218,14 @@ pytec3d::ElementEvaluator::Inputs ElementBuilder::evaluator_inputs(pytec3d::Oper
 DenseVector<Number> ElementBuilder::local_dof_vector(const NumericVector<Number> *solution) const
 {
     DenseVector<Number> local(static_cast<unsigned int>(dof_indices_.size()));
-    if (solution)
+    if (solution && !dof_indices_.empty())
+    {
+        // One batched read of the element's values (local and ghost entries), not one access per DOF.
+        thread_local std::vector<Number> values;
+        solution->get(dof_indices_, values);
         for (unsigned int i = 0; i < dof_indices_.size(); ++i)
-            local(i) = solution->el(dof_indices_[i]);
+            local(i) = values[i];
+    }
     return local;
 }
 
@@ -284,6 +289,31 @@ void ElementBuilder::build_element_rhs()
 
     add_nodal_loads(dofs, rhs);
 
+    vectors[VectorsSet::RHS_VECTORS] = {std::move(rhs)};
+}
+
+bool ElementBuilder::build_rhs_basis(pytec3d::ElementEvaluator::RhsBasis &basis)
+{
+    const pytec3d::ElementType &type = *elem_data.entry->type;
+    pytec3d::ElementParameterValues values(type, parameter_inputs());
+    const auto dofs = type.element_indices(*dof_solution_system_, *elem_data.elem, pytec3d::FieldKind::Dof, elem_data.entry->domain);
+    pytec3d::ElementEvaluator evaluator(evaluator_inputs(pytec3d::Operation::Rhs, values, dofs));
+    return evaluator.rhs_basis(basis);
+}
+
+void ElementBuilder::build_element_rhs_from_basis(const pytec3d::ElementEvaluator::RhsBasis &basis)
+{
+    const pytec3d::ElementType &type = *elem_data.entry->type;
+    pytec3d::ElementParameterValues values(type, parameter_inputs());
+    const auto dofs = type.element_indices(*dof_solution_system_, *elem_data.elem, pytec3d::FieldKind::Dof, elem_data.entry->domain);
+    DenseVector<Number> rhs(n_dofs);
+    if (!basis.terms.empty())
+    {
+        // The coefficients only: the Parameters operation reinit()s no FE.
+        pytec3d::ElementEvaluator evaluator(evaluator_inputs(pytec3d::Operation::Parameters, values, dofs));
+        evaluator.add_rhs_from_basis(basis, rhs);
+    }
+    add_nodal_loads(dofs, rhs);
     vectors[VectorsSet::RHS_VECTORS] = {std::move(rhs)};
 }
 
@@ -376,7 +406,6 @@ void ElementBuilder::build_element_solution()
 
 void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
 {
-    static std::mutex solution_write_mutex;
 
     const pytec3d::ElementType &type = *elem_data.entry->type;
     const pytec3d::registry::Domain domain = elem_data.entry->domain;
@@ -385,8 +414,9 @@ void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
     const auto field_indices = type.element_indices(system, *elem_data.elem, kind, domain);
 
     // The static fields: their operators, stored with the element matrices (build_element), applied to the solution.
-    const auto &stored = matrices[kind == pytec3d::FieldKind::Nodal ? MatricesSet::NODAL_SOLUTION_MATRICES
-                                                                    : MatricesSet::ELEMENT_SOLUTION_MATRICES];
+    const auto &stored = field_operators_ ? *field_operators_
+                                          : matrices[kind == pytec3d::FieldKind::Nodal ? MatricesSet::NODAL_SOLUTION_MATRICES
+                                                                                       : MatricesSet::ELEMENT_SOLUTION_MATRICES];
     const bool dynamic = type.has_dynamic_fields(kind, domain, elem_data.laws);
     const bool constants = (type.field_operators(kind, domain) & 8u) != 0;
     const auto needs = [&](std::size_t k) { return dynamic || (k < stored.size() && stored[k].m() > 0); };
@@ -423,8 +453,15 @@ void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
         fail("the fields have " + std::to_string(field_values.size()) + " values but system '" + system.name() + "' has " +
              std::to_string(system_dofs.size()) + " DOFs on the element.");
 
-    std::lock_guard<std::mutex> lock(solution_write_mutex);
+    // The field DOFs (L2_LAGRANGE, MONOMIAL) belong to this element only, owned by its rank: each is written once, by
+    // one thread, directly into the local array of the field system (field_output_), no lock.
+    const dof_id_type first = system.solution->first_local_index(), last = system.solution->last_local_index();
     for (unsigned int i = 0; i < system_dofs.size(); ++i)
-        if ((system.solution->first_local_index() <= system_dofs[i]) && (system_dofs[i] < system.solution->last_local_index()))
-            system.solution->set(system_dofs[i], field_values(i));
+        if (first <= system_dofs[i] && system_dofs[i] < last)
+        {
+            if (field_output_)
+                field_output_[system_dofs[i] - first] = field_values(i);
+            else
+                system.solution->set(system_dofs[i], field_values(i));
+        }
 }

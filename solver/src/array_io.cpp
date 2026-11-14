@@ -18,6 +18,8 @@
 #include <libmesh/mesh_base.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/system.h>
+#include <libmesh/dof_map.h>
+#include <libmesh/variable.h>
 
 #include <algorithm>
 #include <array>
@@ -320,35 +322,83 @@ namespace pytec3d
         const WritePlan plan = write_plan(systems, system_name);
         const System &system = systems.get_system(system_name);
 
-        std::unique_ptr<libMesh::NumericVector<Number>> parallel_solution;
+        // The values in the layout of the plan, from the local elements on the threads, summed over the ranks: per node,
+        // the variables in system order, their nodal values (FEInterface::nodal_soln()) averaged over the elements that
+        // have the variable, as build_parallel_solution_vector() does; per element, the variables sorted by name.
+        const libMesh::MeshBase &mesh = system.get_mesh();
+        const libMesh::NumericVector<Number> &local = *system.current_local_solution;
+        const unsigned int n_vars = system.n_vars();
+        std::vector<unsigned int> n_components(n_vars), offset(n_vars);
+        {
+            std::vector<unsigned int> order(n_vars);
+            std::iota(order.begin(), order.end(), 0u);
+            if (!plan.nodal)
+                std::sort(order.begin(), order.end(), [&system](unsigned int a, unsigned int b)
+                          { return system.variable_name(a) < system.variable_name(b); });
+            unsigned int running = 0;
+            for (const unsigned int var : order)
+            {
+                n_components[var] =
+                    std::max(1u, libMesh::cast_int<unsigned int>(FEInterface::n_vec_dim(mesh, system.variable_type(var))));
+                offset[var] = running;
+                running += n_components[var];
+            }
+        }
+        const std::size_t n_tuples = plan.nodal ? mesh.max_node_id() : mesh.max_elem_id();
+        std::vector<Number> solution(n_tuples * plan.tuple_stride, 0.0);
+        std::vector<Number> counts(plan.nodal ? n_tuples * n_vars : 0, 0.0);
+        std::vector<const libMesh::Elem *> elements;
+        for (const libMesh::Elem *elem : mesh.active_local_element_ptr_range())
+            elements.push_back(elem);
+        const int threads = std::max(1, static_cast<int>(libMesh::n_threads()));
+#pragma omp parallel num_threads(threads)
+        {
+            std::vector<libMesh::dof_id_type> dofs;
+            std::vector<Number> element_values, nodal_values;
+#pragma omp for schedule(dynamic, 64)
+            for (std::size_t i = 0; i < elements.size(); ++i)
+            {
+                const libMesh::Elem *elem = elements[i];
+                for (unsigned int var = 0; var < n_vars; ++var)
+                {
+                    if (!system.variable(var).active_on_subdomain(elem->subdomain_id()))
+                        continue;
+                    system.get_dof_map().dof_indices(elem, dofs, var);
+                    local.get(dofs, element_values);
+                    const unsigned int nc = n_components[var];
+                    if (!plan.nodal)
+                    {
+                        // An element field: one value per component (MONOMIAL, CONSTANT), of this element only.
+                        for (unsigned int c = 0; c < nc && c < element_values.size(); ++c)
+                            solution[(offset[var] + c) * n_tuples + elem->id()] = element_values[c];
+                        continue;
+                    }
+                    FEInterface::nodal_soln(elem->dim(), system.variable_type(var), elem, element_values, nodal_values, true, nc);
+                    for (unsigned int n = 0; n < elem->n_nodes(); ++n)
+                    {
+                        const std::size_t node = elem->node_id(n);
+                        for (unsigned int c = 0; c < nc; ++c)
+                        {
+                            const Number v = nodal_values[n * nc + c];
+#pragma omp atomic
+                            solution[node * plan.tuple_stride + offset[var] + c] += v;
+                        }
+#pragma omp atomic
+                        counts[node * n_vars + var] += 1.0;
+                    }
+                }
+            }
+        }
+        system.comm().sum(solution);
         if (plan.nodal)
         {
-            const std::set<std::string> system_names = {system_name};
-            parallel_solution = systems.build_parallel_solution_vector(&system_names);
+            system.comm().sum(counts);
+            for (std::size_t node = 0; node < n_tuples; ++node)
+                for (unsigned int var = 0; var < n_vars; ++var)
+                    if (counts[node * n_vars + var] > 0.0)
+                        for (unsigned int c = 0; c < n_components[var]; ++c)
+                            solution[node * plan.tuple_stride + offset[var] + c] /= counts[node * n_vars + var];
         }
-        else
-        {
-            if (plan.tuple_stride == 0)
-                fail("Solution output: the element system has no variable.");
-            // libMesh selects a vector variable by the names of its components, n_vec_dim of them.
-            static const std::array<const char *, 3> suffix = {"_x", "_y", "_z"};
-            std::vector<std::string> var_names;
-            for (unsigned int i = 0; i < system.n_vars(); ++i)
-            {
-                const libMesh::FEType &type = system.variable_type(i);
-                if (FEInterface::field_type(type) == libMesh::TYPE_VECTOR)
-                    for (unsigned int c = 0; c < FEInterface::n_vec_dim(system.get_mesh(), type); ++c)
-                        var_names.push_back(system.variable_name(i) + suffix[c]);
-                else
-                    var_names.push_back(system.variable_name(i));
-            }
-            parallel_solution = systems.build_parallel_elemental_solution_vector(var_names);
-        }
-        if (!parallel_solution)
-            fail("Solution output: libMesh did not build the solution vector of '" + system_name + "'.");
-
-        std::vector<Number> solution;
-        parallel_solution->localize(solution);
 
         for (const WriteEntry &entry : plan.entries)
         {

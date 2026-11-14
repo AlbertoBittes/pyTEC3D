@@ -70,7 +70,9 @@ void pyTEC3DModel::load(const libMesh::Parallel::Communicator &comm, const pytec
     auto &main_system = equation_systems_->get_system<libMesh::System>(
         pyTEC3DSystemBase::system_name_from_type(pyTEC3DSystemBase::DOF_SOLUTION_SYSTEM));
     coupling_functor_ = std::make_unique<AugmentSparsityOnNodes>(*mesh_, arrays_);
-    main_system.get_dof_map().add_coupling_functor(*coupling_functor_);
+    // Ghosting only: the masters of the couplings are known on the ranks of their slaves (the constraints read their
+    // DOF numbers). The couplings themselves are in the constraint prolongation, not in the sparsity of the matrices.
+    main_system.get_dof_map().add_algebraic_ghosting_functor(*coupling_functor_);
 
     {
         pytec3d::logging::ScopedTimer timer("Mesh prepared and distributed");

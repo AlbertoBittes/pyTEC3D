@@ -86,6 +86,27 @@ namespace pytec3d
         /** @brief Right-hand side of the element: the linear rhs terms (and the replaced ones on linear elements). */
         void add_rhs(Vector &F);
 
+        /**
+         * @brief The right-hand side of the element split into geometry and loads: for each rhs term used on the element
+         * (Rhs operation), the integrated test functions b_i = sum_qp w test_i (scalar, vector or tensor, the type of
+         * its coefficient), so that the term is b_i . C with C its coefficient, constant over the element. Computed
+         * once (Rhs operation, with the FEs); false when a term has a coefficient that varies over the element (a law
+         * output), which the basis cannot represent.
+         */
+        struct RhsBasis
+        {
+            struct Term
+            {
+                unsigned short term = 0;  ///< TermSpec index.
+                unsigned char size = 1;   ///< Values per test function: 1, 3 or 9.
+                std::vector<libMesh::Real> b; ///< [test function][value].
+            };
+            std::vector<Term> terms;
+        };
+        bool rhs_basis(RhsBasis &basis);
+        /** @brief The right-hand side from @p basis and the current coefficients (Parameters operation: no FE). */
+        void add_rhs_from_basis(const RhsBasis &basis, Vector &F);
+
         /** @brief Jacobian (J) and residual (R) terms of the laws selected on the element, at the current solution. */
         void add_nonlinear(Matrix &J, Vector &R);
 
@@ -119,6 +140,8 @@ namespace pytec3d
             virtual ~Implementation() = default;
             virtual void add_matrices(Matrix &K, Matrix &C, Matrix &M) = 0;
             virtual void add_rhs(Vector &F) = 0;
+            virtual bool rhs_basis(RhsBasis &basis) = 0;
+            virtual void add_rhs_from_basis(const RhsBasis &basis, Vector &F) = 0;
             virtual void add_nonlinear(Matrix &J, Vector &R) = 0;
             virtual void add_law_output(Vector &R, const std::array<libMesh::Real, 3> &scale) = 0;
             virtual void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F) = 0;

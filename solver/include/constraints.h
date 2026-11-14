@@ -94,5 +94,6 @@ private:
   std::vector<std::string> _coupling_variable_values;
   std::unordered_set<int> _edge_coupling_cp_ids;
   bool _has_constraint_cache = false;
+  bool constraints_applied_ = false; ///< The linear solver has a P (apply_constraints()).
   pyTEC3DDOFSystem<ImplSystem> &system_; ///< The DOF system constrained.
 };

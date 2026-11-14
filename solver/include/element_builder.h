@@ -106,6 +106,12 @@ public:
     /** @brief Builds the source vector (element loads, nodal loads, magnetization). */
     void build_element_rhs();
 
+    /** @brief The rhs basis of the active element (ElementEvaluator::rhs_basis(), with its FEs); false when the element
+     * cannot use one (its rhs is then built by build_element_rhs()). */
+    bool build_rhs_basis(pytec3d::ElementEvaluator::RhsBasis &basis);
+    /** @brief build_element_rhs() from the basis of the active element and its current loads: no FE. */
+    void build_element_rhs_from_basis(const pytec3d::ElementEvaluator::RhsBasis &basis);
+
     /** @brief Builds the tangent matrix and residual of the law terms at the current solution; @p scheme gives the
      * velocity and acceleration of the law terms with dt() and the scaling of their Jacobian. */
     /** @p picard: the Jacobian of the laws with their secant (Picard iteration), not their tangent. */
@@ -131,6 +137,12 @@ public:
     unsigned int get_n_dofs() const { return n_dofs; }
 
     /** @brief Shares canonical nodal-load injector ownership data with this builder instance. */
+    /** @brief The operators of the static fields of the active element, read in place by build_nodal_solution() /
+     * build_element_solution() instead of get_matrices() (null: those). */
+    void set_field_operators(const std::vector<libMesh::DenseMatrix<libMesh::Number>> *operators) { field_operators_ = operators; }
+    /** @brief The local array of the solution of the field system the fields are written into (null: through set()). */
+    void set_field_output(libMesh::Number *local_array) { field_output_ = local_array; }
+
     void set_nodal_load_map(const NodalLoadInjectorElemByVarMap *map)
     {
         nodal_load_map_ = map;
@@ -165,6 +177,8 @@ private:
     unsigned int n_dofs = 0; ///< Number of DOFs on the active element.
     std::vector<libMesh::dof_id_type> dof_indices_; ///< DOF system indices of the active element.
     const NodalLoadInjectorElemByVarMap *nodal_load_map_ = nullptr;
+    const std::vector<libMesh::DenseMatrix<libMesh::Number>> *field_operators_ = nullptr;
+    libMesh::Number *field_output_ = nullptr;
 
     pyTEC3DEquationSystems *equation_systems_ = nullptr;
     libMesh::ImplicitSystem *dof_solution_system_ = nullptr;

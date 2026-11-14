@@ -81,7 +81,6 @@ set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(SOURCES
   "${SOURCE_DIR}/array_io.cpp"
   "${SOURCE_DIR}/augment_sparsity_on_nodes.cpp"
-  "${SOURCE_DIR}/binary_reader.cpp"
   "${SOURCE_DIR}/constraints.cpp"
   "${SOURCE_DIR}/curve.cpp"
   "${SOURCE_DIR}/element_builder.cpp"
@@ -103,7 +102,6 @@ set(SOURCES
   "${SOURCE_DIR}/report_tables.cpp"
   "${SOURCE_DIR}/solver_configuration.cpp"
   "${SOURCE_DIR}/solver_diagnostics.cpp"
-  "${SOURCE_DIR}/system_matrix_reduction.cpp"
   "${SOURCE_DIR}/time_step.cpp"
   "${SOURCE_DIR}/variables_map.cpp"
 )

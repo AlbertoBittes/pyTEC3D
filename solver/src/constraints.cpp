@@ -1249,11 +1249,9 @@ bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
     comm.max(dofs_changed);
     comm.max(rows_changed);
 
-    if (dofs_changed)
-        system_.delete_rows_cols_constrained_dofs();
-    else if (rows_changed)
-        // Other masters may give another sparsity pattern: a full factorization.
-        system_.reduced_linear_solver().invalidate_pattern();
+    // P and g of the reduced systems: a new P (a full factorization) for other DOFs or rows, else new values only.
+    system_.apply_constraints(dofs_changed || rows_changed || !constraints_applied_);
+    constraints_applied_ = true;
 
     return dofs_changed || rows_changed;
 }

@@ -236,6 +236,83 @@ namespace pytec3d
                     scatter(kernel<term.kernel>().vector, term, F, 1.0); });
             }
 
+            bool rhs_basis(ElementEvaluator::RhsBasis &basis) override
+            {
+                basis.terms.clear();
+                bool cacheable = true;
+                for_terms(Operation::Rhs, [&](auto term_index)
+                          {
+                    constexpr formulation::TermSpec term = spec.terms[term_index];
+                    constexpr formulation::KernelSpec ks = spec.kernels[term.kernel];
+                    if constexpr (ks.coefficient.kind == CoefficientKind::LawOutput || ks.test < 0)
+                        cacheable = false;
+                    else
+                    {
+                        constexpr formulation::NablaSpec tn = spec.nablas[static_cast<std::size_t>(ks.test)];
+                        using Test = cpp_t<tn.output>;
+                        const QpDofTable<Test> &test = nabla(ks.test).template get<Test>();
+                        const std::size_t n = test.empty() ? 0 : test[0].size();
+                        ElementEvaluator::RhsBasis::Term out;
+                        out.term = static_cast<unsigned short>(term_index);
+                        out.size = std::is_same_v<Test, Real> ? 1 : std::is_same_v<Test, RealVectorValue> ? 3 : 9;
+                        out.b.assign(n * out.size, 0.0);
+                        // b_i = sum_qp w test_i: the coefficient, constant over the element, comes out of the sum.
+                        for (std::size_t qp = 0; qp < nq_; ++qp)
+                            for (std::size_t i = 0; i < n; ++i)
+                            {
+                                const Real w = weights_[qp];
+                                const Test &t = test[qp][i];
+                                if constexpr (std::is_same_v<Test, Real>)
+                                    out.b[i] += w * t;
+                                else if constexpr (std::is_same_v<Test, RealVectorValue>)
+                                    for (unsigned int c = 0; c < 3; ++c)
+                                        out.b[i * 3 + c] += w * t(c);
+                                else
+                                    for (unsigned int r = 0; r < 3; ++r)
+                                        for (unsigned int c = 0; c < 3; ++c)
+                                            out.b[i * 9 + r * 3 + c] += w * t(r, c);
+                            }
+                        basis.terms.push_back(std::move(out));
+                    } });
+                return cacheable;
+            }
+
+            void add_rhs_from_basis(const ElementEvaluator::RhsBasis &basis, Vector &F) override
+            {
+                // The rhs terms of the element, from their basis and their coefficients now: no FE.
+                std::size_t next = 0;
+                static_for<kTerms>([&](auto term_index)
+                                   {
+                    if (next >= basis.terms.size() || basis.terms[next].term != term_index)
+                        return;
+                    constexpr formulation::TermSpec term = spec.terms[term_index];
+                    constexpr formulation::KernelSpec ks = spec.kernels[term.kernel];
+                    const ElementEvaluator::RhsBasis::Term &b = basis.terms[next++];
+                    if constexpr (ks.coefficient.kind != CoefficientKind::LawOutput)
+                    {
+                        using C = cpp_t<ks.coefficient.type>;
+                        const TypedCoefficient<C> c = coefficient<C>(ks.coefficient);
+                        const C &value = c.values[0];
+                        const std::size_t n = b.b.size() / b.size;
+                        Vector v(static_cast<unsigned int>(n));
+                        for (std::size_t i = 0; i < n; ++i)
+                        {
+                            const Real *bi = b.b.data() + i * b.size;
+                            Real dot = 0.0;
+                            if constexpr (std::is_same_v<C, Real>)
+                                dot = bi[0] * value;
+                            else if constexpr (std::is_same_v<C, RealVectorValue>)
+                                dot = bi[0] * value(0) + bi[1] * value(1) + bi[2] * value(2);
+                            else
+                                for (unsigned int r = 0; r < 3; ++r)
+                                    for (unsigned int col = 0; col < 3; ++col)
+                                        dot += bi[r * 3 + col] * value(r, col);
+                            v(static_cast<unsigned int>(i)) = dot;
+                        }
+                        scatter(v, term, F, 1.0);
+                    } });
+            }
+
             void add_nonlinear(Matrix &J, Vector &R) override
             {
                 for_terms(Operation::Nonlinear, [&](auto term_index)
@@ -837,6 +914,16 @@ namespace pytec3d
     void ElementEvaluator::add_matrices(Matrix &K, Matrix &C, Matrix &M)
     {
         impl_->add_matrices(K, C, M);
+    }
+
+    bool ElementEvaluator::rhs_basis(RhsBasis &basis)
+    {
+        return impl_->rhs_basis(basis);
+    }
+
+    void ElementEvaluator::add_rhs_from_basis(const RhsBasis &basis, Vector &F)
+    {
+        impl_->add_rhs_from_basis(basis, F);
     }
 
     void ElementEvaluator::add_rhs(Vector &F)

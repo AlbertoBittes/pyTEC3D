@@ -20,11 +20,9 @@
 #include "logging.h"
 #include "report_tables.h"
 #include "solver_diagnostics.h"
-#include "binary_reader.h"
 #include "element_builder.h"
 #include "model_element_types.h"
 #include "constraints.h"
-#include "system_matrix_reduction.h"
 #include "variables_map.h"
 
 #include <libmesh/libmesh.h>
@@ -41,7 +39,10 @@
 #include <libmesh/petsc_vector.h>  // for libMesh::PetscVector
 #include <libmesh/wrapped_petsc.h> // for WrappedPetsc
 
-#include <petscmat.h> // for MatResetHash
+#include <petscmat.h>
+
+#include <exception>
+#include <omp.h>
 
 
 using libMesh::libmesh_ignore;
@@ -64,11 +65,6 @@ namespace
     private:
         libMesh::Real &norm_;
     };
-
-    std::filesystem::path get_emat_folderpath_from_solver()
-    {
-        return std::filesystem::current_path() / "emat";
-    }
 
     using ElemRecordIndex = std::unordered_map<unsigned int, std::streampos>;
 
@@ -134,43 +130,38 @@ namespace
 
 namespace
 {
+    /** @brief Elements computed on the threads, then added in element order: the work of a chunk at a time in memory. */
+    constexpr std::size_t kChunk = 4096;
+
     /**
-     * @brief The time scheme on one element: Keff = K + c_v C + c_a M and rhs -= C h_v + M h_a.
-     *
-     * @p matrices are the element K, C and, for second-order element types, M; h_v and h_a come from the
-     * state at the start of the step (u_n, v_n, a_n) on the element DOFs.
+     * @brief fn(builder, i) for i in [begin, end) on the threads of libMesh (n_threads()), each thread with its own
+     * ElementBuilder (made by @p make). An exception of a thread is rethrown after the loop.
      */
-    libMesh::DenseMatrix<libMesh::Number> apply_time_scheme(const std::vector<libMesh::DenseMatrix<libMesh::Number>> &matrices,
-                                                            const TimeScheme &scheme,
-                                                            const libMesh::System &system,
-                                                            const libMesh::NumericVector<libMesh::Number> &old_solution,
-                                                            const std::vector<libMesh::dof_id_type> &dof_indices,
-                                                            libMesh::DenseVector<libMesh::Number> &rhs)
+    template <typename Make, typename Fn>
+    void parallel_elements(std::size_t begin, std::size_t end, Make &&make, Fn &&fn)
     {
-        libMesh::DenseMatrix<libMesh::Number> keff = matrices[0];
-        if (!scheme.transient())
-            return keff;
-
-        std::vector<libMesh::Number> u_n, v_n, a_n;
-        old_solution.get(dof_indices, u_n);
-        system.get_vector(pyTEC3DSystemBase::kOldVelocity).get(dof_indices, v_n);
-        system.get_vector(pyTEC3DSystemBase::kOldAcceleration).get(dof_indices, a_n);
-
-        const auto add_term = [&](const libMesh::DenseMatrix<libMesh::Number> &matrix, libMesh::Real c,
-                                  libMesh::Real hu, libMesh::Real hv, libMesh::Real ha)
+        std::exception_ptr failure;
+        const int threads = std::max(1, static_cast<int>(libMesh::n_threads()));
+#pragma omp parallel num_threads(threads)
         {
-            if (matrix.m() == 0 || (c == 0.0 && hu == 0.0 && hv == 0.0 && ha == 0.0))
-                return;
-            keff.add(c, matrix);
-            libMesh::DenseVector<libMesh::Number> history(static_cast<unsigned int>(dof_indices.size()));
-            for (unsigned int i = 0; i < history.size(); ++i)
-                history(i) = hu * u_n[i] + hv * v_n[i] + ha * a_n[i];
-            matrix.vector_mult_add(rhs, -1.0, history);
-        };
-        add_term(matrices[1], scheme.c_v, scheme.hu_v, scheme.hv_v, scheme.ha_v);
-        if (matrices.size() > 2)
-            add_term(matrices[2], scheme.c_a, scheme.hu_a, scheme.hv_a, scheme.ha_a);
-        return keff;
+            ElementBuilder builder = make();
+#pragma omp for schedule(dynamic, 16)
+            for (std::size_t i = begin; i < end; ++i)
+            {
+                try
+                {
+                    fn(builder, i);
+                }
+                catch (...)
+                {
+#pragma omp critical(pytec3d_element_failure)
+                    if (!failure)
+                        failure = std::current_exception();
+                }
+            }
+        }
+        if (failure)
+            std::rethrow_exception(failure);
     }
 } // namespace
 
@@ -433,55 +424,191 @@ bool pyTEC3DDOFSystem<ImplicitSys>::check_update_element_matrices()
 }
 
 template <typename ImplicitSys>
+const std::vector<const libMesh::Elem *> &pyTEC3DDOFSystem<ImplicitSys>::local_elements()
+{
+    if (local_elements_.empty())
+        for (const libMesh::Elem *elem : this->typed_equation_systems().get_mesh().active_local_element_ptr_range())
+            local_elements_.push_back(elem);
+    return local_elements_;
+}
+
+template <typename ImplicitSys>
 void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
 {
     auto &equation_systems = this->typed_equation_systems();
-    const libMesh::MeshBase &mesh = equation_systems.get_mesh();
-    const auto &comm = mesh.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-
-    // K, C (M), and the operators of the static nodal and element fields, element by element in the order of the
-    // local elements, read back in the same order by the DOF, nodal and element systems.
-    const std::vector<std::string> filenames = {
-        "mtrx_" + rank_str + ".emat",
-        "nodal_sol_mtrx_" + rank_str + ".emat",
-        "element_sol_mtrx_" + rank_str + ".emat"};
-
+    const auto &comm = equation_systems.get_mesh().comm();
     StepReport &report = equation_systems.step_report();
     if (element_matrices_written_)
     {
-        pytec3d::logging::info("Reusing element matrices from previous time step");
+        pytec3d::logging::info("Reusing the operators of the model (K, C, M)");
         return;
     }
-
     report.element_matrices_computed = true;
-    pytec3d::logging::ScopedTimer timer("Element matrices computed (" +
-                                            std::to_string(mesh.n_active_local_elem()) + " local elements)",
+    const auto &elements = local_elements();
+    pytec3d::logging::ScopedTimer timer("Operators assembled (" + std::to_string(elements.size()) + " local elements)",
                                         &report.seconds_element_matrices);
 
-    auto streams = reader.open_output_streams(emat_folderpath, filenames);
+    // K, C, M once, global and unconstrained (the constraints are applied to the global systems, ReducedPetscLinearSolver);
+    // the operators of the static nodal and element fields kept in memory, applied at each output; the rhs bases of the
+    // elements (the integrated test functions of their rhs terms), on which the loads of each step are evaluated.
+    nodal_operators_.assign(elements.size(), {});
+    element_operators_.assign(elements.size(), {});
+    rhs_bases_.assign(elements.size(), {});
+    rhs_cached_.assign(elements.size(), 0);
+    libMesh::SparseMatrix<libMesh::Number> &K = this->effective_matrix();
+    libMesh::SparseMatrix<libMesh::Number> *C = this->have_matrix("damping") ? &this->get_matrix("damping") : nullptr;
+    libMesh::SparseMatrix<libMesh::Number> *M = this->have_matrix("mass") ? &this->get_matrix("mass") : nullptr;
+    K.zero();
+    if (C)
+        C->zero();
+    if (M)
+        M->zero();
+    bool local_damping = false, local_mass = false;
 
-    ElementBuilder builder(&equation_systems);
-    for (const auto &elem : mesh.active_local_element_ptr_range())
+    struct Built
     {
-        builder.set_element_data(elem);
-        builder.build_element();
-
-        const auto elem_id = static_cast<unsigned int>(elem->id());
-        BinaryReader::write_element_matrices(*streams[0], elem_id,
-                                             builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
-        BinaryReader::write_element_matrices(*streams[1], elem_id,
-                                             builder.get_matrices()[ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES]);
-        BinaryReader::write_element_matrices(*streams[2], elem_id,
-                                             builder.get_matrices()[ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES]);
+        std::vector<libMesh::dof_id_type> dofs;
+        std::vector<libMesh::DenseMatrix<libMesh::Number>> dof, nodal, element;
+    };
+    std::vector<Built> built;
+    for (std::size_t begin = 0; begin < elements.size(); begin += kChunk)
+    {
+        const std::size_t end = std::min(elements.size(), begin + kChunk);
+        built.clear();
+        built.resize(end - begin);
+        parallel_elements(begin, end, [&] { return ElementBuilder(&equation_systems); },
+                          [&](ElementBuilder &builder, std::size_t i)
+                          {
+                              builder.set_element_data(elements[i]);
+                              builder.build_element();
+                              rhs_cached_[i] = builder.build_rhs_basis(rhs_bases_[i]) ? 1 : 0;
+                              Built &out = built[i - begin];
+                              this->get_dof_map().dof_indices(elements[i], out.dofs);
+                              auto &m = builder.get_matrices();
+                              out.dof = std::move(m[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
+                              out.nodal = std::move(m[ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES]);
+                              out.element = std::move(m[ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES]);
+                          });
+        for (std::size_t i = begin; i < end; ++i)
+        {
+            Built &out = built[i - begin];
+            K.add_matrix(out.dof[0], out.dofs);
+            if (out.dof.size() > 1 && out.dof[1].m() > 0 && C)
+            {
+                C->add_matrix(out.dof[1], out.dofs);
+                local_damping = true;
+            }
+            if (out.dof.size() > 2 && out.dof[2].m() > 0 && M)
+            {
+                M->add_matrix(out.dof[2], out.dofs);
+                local_mass = true;
+            }
+            // A zero operator is stored empty (0 x 0, ElementBuilder::build_element()): no memory for it.
+            nodal_operators_[i] = std::move(out.nodal);
+            element_operators_[i] = std::move(out.element);
+        }
     }
-
-    reader.close_file_streams(streams);
+    K.close();
+    if (C)
+        C->close();
+    if (M)
+        M->close();
+    comm.max(local_damping);
+    comm.max(local_mass);
+    has_damping_ = local_damping;
+    has_mass_ = local_mass;
+    keff_c_v_ = keff_c_a_ = 0.0; // effective_matrix() holds K
     element_matrices_written_ = true;
+}
+
+template <typename ImplicitSys>
+void pyTEC3DDOFSystem<ImplicitSys>::apply_constraints(bool rows_changed)
+{
+    this->reduced_linear_solver().set_constraints(this->get_dof_map(), rows_changed);
+}
+
+template <typename ImplicitSys>
+void pyTEC3DDOFSystem<ImplicitSys>::update_effective_matrix()
+{
+    // K_eff += (c_v - c_v') C + (c_a - c_a') M: the same pattern (all the matrices have the sparsity of the DofMap).
+    const TimeScheme scheme = this->typed_equation_systems().time_scheme();
+    const libMesh::Real c_v = has_damping_ && scheme.transient() ? scheme.c_v : 0.0;
+    const libMesh::Real c_a = has_mass_ && scheme.transient() ? scheme.c_a : 0.0;
+    libMesh::SparseMatrix<libMesh::Number> &keff = this->effective_matrix();
+    if (c_v != keff_c_v_)
+        keff.add(c_v - keff_c_v_, this->get_matrix("damping"));
+    if (c_a != keff_c_a_)
+        keff.add(c_a - keff_c_a_, this->get_matrix("mass"));
+    keff_c_v_ = c_v;
+    keff_c_a_ = c_a;
+}
+
+template <typename ImplicitSys>
+void pyTEC3DDOFSystem<ImplicitSys>::assemble_rhs(libMesh::NumericVector<libMesh::Number> &F)
+{
+    auto &equation_systems = this->typed_equation_systems();
+    const auto *nodal_load_map = this->ensure_nodal_load_injector_map();
+    const auto &elements = local_elements();
+    F.zero();
+
+    // The element right-hand sides on the threads, added in element order.
+    struct Built
+    {
+        std::vector<libMesh::dof_id_type> dofs;
+        libMesh::DenseVector<libMesh::Number> rhs;
+    };
+    std::vector<Built> built;
+    for (std::size_t begin = 0; begin < elements.size(); begin += kChunk)
+    {
+        const std::size_t end = std::min(elements.size(), begin + kChunk);
+        built.clear();
+        built.resize(end - begin);
+        parallel_elements(begin, end,
+                          [&]
+                          {
+                              ElementBuilder builder(&equation_systems);
+                              builder.set_nodal_load_map(nodal_load_map);
+                              return builder;
+                          },
+                          [&](ElementBuilder &builder, std::size_t i)
+                          {
+                              builder.set_element_data(elements[i]);
+                              // The loads now on the cached geometry of the rhs (its basis), else the full evaluation.
+                              if (rhs_cached_.size() == elements.size() && rhs_cached_[i])
+                                  builder.build_element_rhs_from_basis(rhs_bases_[i]);
+                              else
+                                  builder.build_element_rhs();
+                              Built &out = built[i - begin];
+                              this->get_dof_map().dof_indices(elements[i], out.dofs);
+                              out.rhs = std::move(builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0]);
+                          });
+        for (std::size_t i = begin; i < end; ++i)
+            F.add_vector(built[i - begin].rhs, built[i - begin].dofs);
+    }
+    F.close();
+
+    // The history of the step: - C h_v - M h_a, h = hu u_n + hv v_n + ha a_n (time_step.h).
+    const TimeScheme scheme = equation_systems.time_scheme();
+    if (!scheme.transient())
+        return;
+    const auto history = [&](const char *matrix, libMesh::Real hu, libMesh::Real hv, libMesh::Real ha)
+    {
+        if (hu == 0.0 && hv == 0.0 && ha == 0.0)
+            return;
+        std::unique_ptr<libMesh::NumericVector<libMesh::Number>> h = this->solution->zero_clone();
+        h->add(hu, *this->old_local_solution);
+        h->add(hv, this->get_vector(pyTEC3DSystemBase::kOldVelocity));
+        h->add(ha, this->get_vector(pyTEC3DSystemBase::kOldAcceleration));
+        h->close();
+        std::unique_ptr<libMesh::NumericVector<libMesh::Number>> t = this->solution->zero_clone();
+        this->get_matrix(matrix).vector_mult(*t, *h);
+        F.add(-1.0, *t);
+    };
+    if (has_damping_)
+        history("damping", scheme.hu_v, scheme.hv_v, scheme.ha_v);
+    if (has_mass_)
+        history("mass", scheme.hu_a, scheme.hv_a, scheme.ha_a);
+    F.close();
 }
 
 template <typename ImplicitSys>
@@ -530,8 +657,13 @@ pyTEC3DLinearSystem::~pyTEC3DLinearSystem() noexcept = default;
 
 void pyTEC3DLinearSystem::add_matrices()
 {
+    // The system matrix holds K_eff; C and M (the transient element types) for its updates and the history of a step.
     libMesh::ImplicitSystem::add_matrices();
-    this->get_system_matrix().use_hash_table(true);
+    const unsigned int time_order = this->typed_equation_systems().time_order();
+    if (time_order >= 1)
+        this->add_matrix("damping");
+    if (time_order >= 2)
+        this->add_matrix("mass");
 }
 
 ReducedPetscLinearSolver &pyTEC3DLinearSystem::reduced_linear_solver()
@@ -540,20 +672,6 @@ ReducedPetscLinearSolver &pyTEC3DLinearSystem::reduced_linear_solver()
     if (!solver)
         pytec3d::logging::error_and_abort("pyTEC3DLinearSystem: the linear solver is not a ReducedPetscLinearSolver.");
     return *solver;
-}
-
-void pyTEC3DLinearSystem::delete_rows_cols_constrained_dofs()
-{
-    pytec3d::logging::info("Removing constrained DOFs from system matrix and RHS");
-    subset_solve_holder_ = std::make_unique<SystemMatrixReduction>(*this);
-    this->reduced_linear_solver().restrict_solve_to(&subset_solve_holder_->dof_ids(), libMesh::SUBSET_ZERO);
-}
-
-void pyTEC3DNonLinearSystem::delete_rows_cols_constrained_dofs()
-{
-    pytec3d::logging::info("Removing constrained DOFs from system matrix and RHS");
-    subset_solve_holder_ = std::make_unique<SystemMatrixReduction>(*this);
-    this->reduced_linear_solver().restrict_solve_to(&subset_solve_holder_->dof_ids(), libMesh::SUBSET_ZERO);
 }
 
 void pyTEC3DLinearSystem::solve()
@@ -566,9 +684,6 @@ void pyTEC3DLinearSystem::solve()
 
     // Get the user-specified linear solver tolerance
     const auto [maxits, tol] = this->get_linear_solve_parameters();
-
-    if (subset_solve_holder_ && subset_solve_holder_->dof_ids().empty())
-        pytec3d::logging::error_and_abort("pyTEC3DLinearSystem::solve: subset solve requested with empty subset dof list.");
 
     // On the unconstrained DOFs; the factorization reused, or only its numeric part, when possible.
     ReducedPetscLinearSolver &solver = this->reduced_linear_solver();
@@ -627,79 +742,14 @@ void pyTEC3DLinearSystem::post_init()
 
 void pyTEC3DLinearSystem::assemble_system()
 {
-    libMesh::PerfLog perf_log("Matrix Assembly");
-
-    auto &system = *this;
-    libMesh::SparseMatrix<libMesh::Number> &matrix = system.get_system_matrix();
-    system.rhs->zero();
-
-    const libMesh::DofMap &dof_map = system.get_dof_map();
-    const libMesh::MeshBase &mesh = this->typed_equation_systems().get_mesh();
-    auto *solver = this->get_linear_solver();
-    const auto &comm = system.comm();
-
+    // K_eff from the operators of the model (assembled once); only the right-hand side is assembled at each step.
     const bool update_matrix = this->check_update_system_matrix();
     this->typed_equation_systems().step_report().system_matrix_updated |= update_matrix;
     if (update_matrix)
-    {
-        matrix.zero();
-        solver->reuse_preconditioner(false);
-
-        auto &petsc_matrix = static_cast<libMesh::PetscMatrix<libMesh::Number> &>(matrix);
-        PetscErrorCode ierr = MatResetHash(petsc_matrix.mat());
-        CHKERRABORT(this->comm().get(), ierr);
-    }
-    else
-        solver->reuse_preconditioner(true);
-
-    const TimeScheme scheme = this->typed_equation_systems().time_scheme();
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-    const std::string rank_str = std::to_string(comm.rank());
-
-    BinaryReader reader;
-    const std::filesystem::path mtrx_filepath = emat_folderpath / ("mtrx_" + rank_str + ".emat");
-
-    auto streams = reader.open_input_streams(emat_folderpath,
-                                             {"mtrx_" + rank_str + ".emat"});
-    auto &mtrx_input_file = *streams[0];
-
-    pytec3d::logging::info("Building global matrix and RHS");
-
-    const auto *nodal_load_map = this->ensure_nodal_load_injector_map();
-
-    ElementBuilder builder(&this->typed_equation_systems());
-    builder.set_nodal_load_map(nodal_load_map);
-    std::vector<libMesh::dof_id_type> dof_indices;
-
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        builder.set_element_data(elem);
-        dof_map.dof_indices(elem, dof_indices);
-
-        unsigned int elem_id = 0;
-        BinaryReader::read_element_matrices(mtrx_input_file,
-                                            elem_id,
-                                            builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
-        builder.build_element_rhs();
-
-        auto &rhs = builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
-        auto Ke = apply_time_scheme(builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES],
-                                    scheme, system, *system.old_local_solution, dof_indices, rhs);
-
-        if (update_matrix)
-        {
-            dof_map.heterogeneously_constrain_element_matrix_and_vector(Ke, rhs, dof_indices);
-            matrix.add_matrix(Ke, dof_indices);
-        }
-        else
-            dof_map.heterogeneously_constrain_element_vector(Ke, rhs, dof_indices);
-
-        system.rhs->add_vector(rhs, dof_indices);
-    }
-
-    reader.close_file_streams(streams);
-    comm.barrier();
-    pytec3d::logging::info("Linear solver output info");
+        this->update_effective_matrix();
+    this->get_linear_solver()->reuse_preconditioner(!update_matrix);
+    pytec3d::logging::info("Building the right-hand side");
+    this->assemble_rhs(*this->rhs);
 }
 
 // ---- pyTEC3DNonLinearSystem -------------------------------------------------------------------------------
@@ -727,6 +777,10 @@ pyTEC3DNonLinearSystem::pyTEC3DNonLinearSystem(libMesh::EquationSystems &es, con
     diff_solver = std::move(newton_solver);
     this->nonlinear_solver->matvec = &pyTEC3DNonLinearSystem::matvec_callback;
     this->nonlinear_solver->residual = &pyTEC3DNonLinearSystem::residual_callback;
+    // The Newton steps: homogeneous constraints, the residual projected by the assembly.
+    this->reduced_linear_solver().set_homogeneous(true);
+    // F - C h_v - M h_a of the step, assembled once per step (it follows the loads, not the iterate).
+    this->add_vector("linear_rhs", false);
 }
 
 pyTEC3DNonLinearSystem::~pyTEC3DNonLinearSystem() noexcept = default;
@@ -742,10 +796,14 @@ ReducedPetscLinearSolver &pyTEC3DNonLinearSystem::reduced_linear_solver()
 
 void pyTEC3DNonLinearSystem::add_matrices()
 {
+    // The system matrix holds the Jacobian; linear_stiffness K_eff; C and M as in the linear system.
     libMesh::ImplicitSystem::add_matrices();
-    this->get_system_matrix().use_hash_table(true);
     this->add_matrix("linear_stiffness");
-    this->get_matrix("linear_stiffness").use_hash_table(true);
+    const unsigned int time_order = this->typed_equation_systems().time_order();
+    if (time_order >= 1)
+        this->add_matrix("damping");
+    if (time_order >= 2)
+        this->add_matrix("mass");
 }
 
 void pyTEC3DNonLinearSystem::matvec_callback(const libMesh::NumericVector<libMesh::Number> & /*X*/,
@@ -792,49 +850,19 @@ void pyTEC3DNonLinearSystem::residual_callback(const libMesh::NumericVector<libM
 
 void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool assemble_residual)
 {
-    libMesh::PerfLog perf_log("Matrix Assembly");
-
     auto &system = *this;
-    libMesh::SparseMatrix<libMesh::Number> &matrix = system.get_system_matrix();
-    libMesh::SparseMatrix<libMesh::Number> &linear_matrix = system.get_matrix("linear_stiffness");
-
-    const libMesh::DofMap &dof_map = system.get_dof_map();
-    const libMesh::MeshBase &mesh = this->typed_equation_systems().get_mesh();
-    const auto &comm = system.comm();
-
-    const bool update_matrix = this->check_update_system_matrix();
-    this->typed_equation_systems().step_report().system_matrix_updated |= update_matrix;
-    const TimeScheme scheme = this->typed_equation_systems().time_scheme();
-
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-    const std::string rank_str = std::to_string(comm.rank());
+    auto &equation_systems = this->typed_equation_systems();
+    const TimeScheme scheme = equation_systems.time_scheme();
+    libMesh::SparseMatrix<libMesh::Number> &jacobian = system.get_system_matrix();
+    libMesh::SparseMatrix<libMesh::Number> &keff = this->effective_matrix();
 
     if (assemble_jacobian)
     {
+        const bool update_matrix = this->check_update_system_matrix();
+        equation_systems.step_report().system_matrix_updated |= update_matrix;
         if (update_matrix)
-        {
-            linear_matrix.zero();
-
-            auto &petsc_linear_matrix = static_cast<libMesh::PetscMatrix<libMesh::Number> &>(linear_matrix);
-            PetscErrorCode ierr = MatResetHash(petsc_linear_matrix.mat());
-            CHKERRABORT(this->comm().get(), ierr);
-        }
-        matrix.zero();
-
-        auto &petsc_matrix = static_cast<libMesh::PetscMatrix<libMesh::Number> &>(matrix);
-        PetscErrorCode ierr = MatResetHash(petsc_matrix.mat());
-        CHKERRABORT(this->comm().get(), ierr);
+            this->update_effective_matrix();
     }
-    if (assemble_residual)
-        system.rhs->zero();
-
-    BinaryReader reader;
-    const std::filesystem::path mtrx_filepath = emat_folderpath / ("mtrx_" + rank_str + ".emat");
-
-    auto streams = reader.open_input_streams(emat_folderpath,
-                                             {"mtrx_" + rank_str + ".emat"});
-    auto &mtrx_input_file = *streams[0];
-
     if (assemble_jacobian && assemble_residual)
         pytec3d::logging::info("Building global Jacobian and residual");
     else if (assemble_jacobian)
@@ -842,132 +870,96 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
     else
         pytec3d::logging::info("Building global residual");
 
-    const auto *nodal_load_map = this->ensure_nodal_load_injector_map();
-
-    ElementBuilder builder(&this->typed_equation_systems());
-    builder.set_nodal_load_map(nodal_load_map);
-    std::vector<libMesh::dof_id_type> dof_indices;
-    std::vector<libMesh::Real> current_solution_values;
-
-    for (const auto &elem : mesh.active_local_element_ptr_range())
+    // The law terms of the elements with laws, on the threads: J_laws and R_laws at the current solution.
+    struct Built
     {
-        builder.set_element_data(elem);
-        dof_map.dof_indices(elem, dof_indices);
-
-        unsigned int elem_id = 0;
-        BinaryReader::read_element_matrices(mtrx_input_file,
-                                            elem_id,
-                                            builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
-        builder.build_element_rhs();
-
-        auto &linear_rhs = builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
-        auto linear_ke = apply_time_scheme(builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES],
-                                           scheme, system, *system.old_local_solution, dof_indices, linear_rhs);
-
-        system.current_local_solution->get(dof_indices, current_solution_values);
-        linear_ke.vector_mult_add(linear_rhs, -1.0, current_solution_values);
-
-        // NewtonSolver solves J * du = r and then updates u <- u - du, so r
-        // must be the true residual F(u), not -F(u).
-        linear_rhs.scale(-1.0);
-
-        const bool nonlinear_element = builder.nonlinear_element();
-        if (nonlinear_element)
-        {
-            builder.build_element_tangent_stiffness_residual(
-                scheme, this->typed_equation_systems().get_solver_settings().nonlinear.picard);
-            auto &tangent_ke = builder.get_matrices()[ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
-            auto &residual = builder.get_vectors()[ElementBuilder::VectorsSet::RESIDUAL_VECTORS][0];
-
-            if (assemble_jacobian)
-                linear_ke += tangent_ke;
-            if (assemble_residual)
-            {
-                // The stored rates of the law outputs under dt(): hv_d q'_n + ha_d q''_n (ElementBuilder: the rest).
-                if (scheme.transient())
-                    if (const auto it = old_law_rates_.find(elem->id()); it != old_law_rates_.end())
-                    {
-                        const std::array<std::array<libMesh::Real, 2>, 2> h = {{{scheme.hv_v, scheme.ha_v},
-                                                                                {scheme.hv_a, scheme.ha_a}}};
-                        for (unsigned int d = 0; d < 2; ++d)
-                        {
-                            if (it->second.v[d].size() == residual.size())
-                                residual.add(h[d][0], it->second.v[d]);
-                            if (it->second.a[d].size() == residual.size())
-                                residual.add(h[d][1], it->second.a[d]);
-                        }
-                    }
-                linear_rhs += residual;
-            }
-
-            if (assemble_jacobian)
-            {
-                if (assemble_residual)
-                    dof_map.heterogeneously_constrain_element_jacobian_and_residual(
-                        linear_ke,
-                        linear_rhs,
-                        dof_indices,
-                        *system.current_local_solution);
-                else
-                    dof_map.heterogeneously_constrain_element_matrix_and_vector(
-                        linear_ke,
-                        linear_rhs,
-                        dof_indices);
-
-                matrix.add_matrix(linear_ke, dof_indices);
-            }
-
-            if (assemble_residual)
-            {
-                if (!assemble_jacobian)
-                    dof_map.heterogeneously_constrain_element_residual(
-                        linear_rhs,
-                        dof_indices,
-                        *system.current_local_solution);
-
-                system.rhs->add_vector(linear_rhs, dof_indices);
-            }
-        }
-        else
-        {
-            if (assemble_jacobian && update_matrix)
-            {
-                if (assemble_residual)
-                    dof_map.heterogeneously_constrain_element_jacobian_and_residual(
-                        linear_ke,
-                        linear_rhs,
-                        dof_indices,
-                        *system.current_local_solution);
-                else
-                    dof_map.heterogeneously_constrain_element_matrix_and_vector(
-                        linear_ke,
-                        linear_rhs,
-                        dof_indices);
-                linear_matrix.add_matrix(linear_ke, dof_indices);
-            }
-            else if (assemble_residual)
-                dof_map.heterogeneously_constrain_element_residual(
-                    linear_rhs,
-                    dof_indices,
-                    *system.current_local_solution);
-
-            if (assemble_residual)
-                system.rhs->add_vector(linear_rhs, dof_indices);
-        }
-    }
-
+        std::vector<libMesh::dof_id_type> dofs;
+        libMesh::DenseMatrix<libMesh::Number> tangent;
+        libMesh::DenseVector<libMesh::Number> residual;
+    };
+    const std::vector<const libMesh::Elem *> &elements = this->law_elements();
     if (assemble_jacobian)
     {
-        // MatAXPY (add()) requires both operands assembled; add_matrix() above leaves them open.
-        matrix.close();
-        linear_matrix.close();
-        matrix.add(1.0, linear_matrix);
+        // J = K_eff + J_laws: the same pattern (the sparsity of the DofMap).
+        jacobian.zero();
+        jacobian.close();
+        jacobian.add(1.0, keff);
     }
-
-    reader.close_file_streams(streams);
-    comm.barrier();
+    if (assemble_residual)
+    {
+        // R = K_eff u - F (+ R_laws): the residual the Newton step u <- u - du drives to zero.
+        keff.vector_mult(*system.rhs, *system.solution);
+        system.rhs->add(-1.0, system.get_vector("linear_rhs"));
+    }
+    const bool picard = equation_systems.get_solver_settings().nonlinear.picard;
+    std::vector<Built> built;
+    for (std::size_t begin = 0; begin < elements.size(); begin += kChunk)
+    {
+        const std::size_t end = std::min(elements.size(), begin + kChunk);
+        built.clear();
+        built.resize(end - begin);
+        parallel_elements(begin, end, [&] { return ElementBuilder(&equation_systems); },
+                          [&](ElementBuilder &builder, std::size_t i)
+                          {
+                              const libMesh::Elem *elem = elements[i];
+                              builder.set_element_data(elem);
+                              builder.build_element_tangent_stiffness_residual(scheme, picard);
+                              Built &out = built[i - begin];
+                              system.get_dof_map().dof_indices(elem, out.dofs);
+                              out.tangent = std::move(builder.get_matrices()[ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES][0]);
+                              out.residual = std::move(builder.get_vectors()[ElementBuilder::VectorsSet::RESIDUAL_VECTORS][0]);
+                              // The stored rates of the law outputs under dt(): hv_d q'_n + ha_d q''_n (the builder adds
+                              // the rest).
+                              if (!scheme.transient())
+                                  return;
+                              if (const auto it = old_law_rates_.find(elem->id()); it != old_law_rates_.end())
+                              {
+                                  const std::array<std::array<libMesh::Real, 2>, 2> h = {{{scheme.hv_v, scheme.ha_v},
+                                                                                          {scheme.hv_a, scheme.ha_a}}};
+                                  for (unsigned int d = 0; d < 2; ++d)
+                                  {
+                                      if (it->second.v[d].size() == out.residual.size())
+                                          out.residual.add(h[d][0], it->second.v[d]);
+                                      if (it->second.a[d].size() == out.residual.size())
+                                          out.residual.add(h[d][1], it->second.a[d]);
+                                  }
+                              }
+                          });
+        for (std::size_t i = begin; i < end; ++i)
+        {
+            const Built &out = built[i - begin];
+            if (assemble_jacobian)
+                jacobian.add_matrix(out.tangent, out.dofs);
+            if (assemble_residual)
+                system.rhs->add_vector(out.residual, out.dofs);
+        }
+    }
+    if (assemble_jacobian)
+        jacobian.close();
+    if (assemble_residual)
+    {
+        system.rhs->close();
+        // P^T R at the unconstrained DOFs, 0 at the constrained ones: the residual (and its norm) of the reduced system.
+        this->reduced_linear_solver().project_residual(*system.rhs);
+    }
     if (assemble_jacobian && assemble_residual)
         pytec3d::logging::info("Newton iteration: Jacobian and residual assembled.");
+}
+
+const std::vector<const libMesh::Elem *> &pyTEC3DNonLinearSystem::law_elements()
+{
+    if (!law_elements_ready_)
+    {
+        ElementBuilder builder(&this->typed_equation_systems());
+        for (const libMesh::Elem *elem : this->local_elements())
+        {
+            builder.set_element_data(elem);
+            if (builder.nonlinear_element())
+                law_elements_.push_back(elem);
+        }
+        law_elements_ready_ = true;
+    }
+    return law_elements_;
 }
 
 void pyTEC3DNonLinearSystem::assemble_system()
@@ -1063,6 +1055,7 @@ void pyTEC3DNonLinearSystem::solve()
     previous_iterate_.reset();
     full_newton_step_ = -1.0;
     const ReducedPetscLinearSolver::Counts before = this->reduced_linear_solver().counts();
+    this->assemble_rhs(this->get_vector("linear_rhs"));
     libMesh::NonlinearImplicitSystem::solve();
     report.full_factorizations += this->reduced_linear_solver().counts().full - before.full;
     report.numeric_factorizations += this->reduced_linear_solver().counts().numeric - before.numeric;
@@ -1151,57 +1144,55 @@ pyTEC3DExplicitSystem::pyTEC3DExplicitSystem(libMesh::EquationSystems &es, const
     this->remove_vector("RHS");
 }
 
+namespace
+{
+    /** @brief The nodal or element fields of the local elements, from their operators kept by the DOF system, on the
+     * threads. */
+    void build_field_system(pyTEC3DEquationSystems &eq_sys, const pyTEC3DDOFSystemBase::FieldOperators &operators, bool nodal)
+    {
+        const libMesh::MeshBase &mesh = eq_sys.get_mesh();
+        std::vector<const libMesh::Elem *> elements;
+        for (const libMesh::Elem *elem : mesh.active_local_element_ptr_range())
+            elements.push_back(elem);
+        if (operators.size() != elements.size())
+            pytec3d::logging::error_and_abort("Field operators: not computed for the local elements of the mesh.");
+        // The local array of the field system, written in place by the threads (each DOF by its only element).
+        libMesh::System &system = eq_sys.get_system(pyTEC3DSystemBase::system_name_from_type(
+            nodal ? pyTEC3DSystemBase::NODAL_SOLUTION : pyTEC3DSystemBase::ELEMENT_SOLUTION));
+        auto &solution = libMesh::cast_ref<libMesh::PetscVector<libMesh::Number> &>(*system.solution);
+        libMesh::Number *local_array = solution.get_array();
+        parallel_elements(0, elements.size(), [&]
+                          {
+                              ElementBuilder builder(&eq_sys);
+                              builder.set_field_output(local_array);
+                              return builder;
+                          },
+                          [&](ElementBuilder &builder, std::size_t i)
+                          {
+                              builder.set_element_data(elements[i]);
+                              builder.set_field_operators(&operators[i]);
+                              if (nodal)
+                                  builder.build_nodal_solution();
+                              else
+                                  builder.build_element_solution();
+                          });
+        solution.restore_array();
+    }
+} // namespace
+
 void pyTEC3DNodalSolutionSystem::assemble_system()
 {
-    pytec3d::logging::ScopedTimer timer("Nodal fields computed",
-                                        &this->typed_equation_systems().step_report().seconds_nodal_fields);
-
     auto &eq_sys = this->typed_equation_systems();
-
-    const libMesh::MeshBase &mesh = eq_sys.get_mesh();
-
-    BinaryReader reader;
-    const std::string rank_str = std::to_string(mesh.comm().rank());
-    auto streams = reader.open_input_streams(get_emat_folderpath_from_solver(), {"nodal_sol_mtrx_" + rank_str + ".emat"});
-
-    ElementBuilder builder(&eq_sys);
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        builder.set_element_data(elem);
-        unsigned int elem_id = 0;
-        BinaryReader::read_element_matrices(*streams[0], elem_id,
-                                            builder.get_matrices()[ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES]);
-        builder.build_nodal_solution();
-    }
-    reader.close_file_streams(streams);
-
+    pytec3d::logging::ScopedTimer timer("Nodal fields computed", &eq_sys.step_report().seconds_nodal_fields);
+    build_field_system(eq_sys, eq_sys.get_dof_solution_system().nodal_field_operators(), true);
     this->solution->close();
 }
 
 void pyTEC3DElementSolutionSystem::assemble_system()
 {
-    pytec3d::logging::ScopedTimer timer("Element fields computed",
-                                        &this->typed_equation_systems().step_report().seconds_element_fields);
-
     auto &eq_sys = this->typed_equation_systems();
-
-    const libMesh::MeshBase &mesh = eq_sys.get_mesh();
-
-    BinaryReader reader;
-    const std::string rank_str = std::to_string(mesh.comm().rank());
-    auto streams = reader.open_input_streams(get_emat_folderpath_from_solver(), {"element_sol_mtrx_" + rank_str + ".emat"});
-
-    ElementBuilder builder(&eq_sys);
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        builder.set_element_data(elem);
-        unsigned int elem_id = 0;
-        BinaryReader::read_element_matrices(*streams[0], elem_id,
-                                            builder.get_matrices()[ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES]);
-        builder.build_element_solution();
-    }
-    reader.close_file_streams(streams);
-
+    pytec3d::logging::ScopedTimer timer("Element fields computed", &eq_sys.step_report().seconds_element_fields);
+    build_field_system(eq_sys, eq_sys.get_dof_solution_system().element_field_operators(), false);
     this->solution->close();
 }
 

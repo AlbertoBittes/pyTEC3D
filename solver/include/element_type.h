@@ -134,7 +134,8 @@ namespace pytec3d
          */
         unsigned int field_operators(FieldKind kind, registry::Domain domain) const;
 
-        const Nabla &nabla(std::size_t index) const { return nablas_[index]; }
+        /** @brief Nabla @p index of the calling thread (bound to its FEs). */
+        const Nabla &nabla(std::size_t index) const { return workspace().nablas[index]; }
 
         /**
          * @brief True when the DOF field @p field has a row in K in @p domain: it is the test of a block without dt()
@@ -193,15 +194,24 @@ namespace pytec3d
 
         const formulation::ElementTypeSpec *spec_;
         ElementTypeOptions options_;
-        std::unique_ptr<libMesh::QBase> quadrature_;
-        std::vector<std::unique_ptr<libMesh::FEAbstract>> fes_;
-        std::vector<Nabla> nablas_;
+        /** @brief The FE objects of one thread: quadrature, FEs, nablas (reinit() changes them). */
+        struct Workspace
+        {
+            std::unique_ptr<libMesh::QBase> quadrature;
+            std::vector<std::unique_ptr<libMesh::FEAbstract>> fes;
+            std::vector<Nabla> nablas;
+        };
+        /** @brief The workspace of the calling thread, built at its first use. */
+        Workspace &workspace() const;
+
+        unsigned int quadrature_order_ = 0;
+        std::size_t instance_ = 0; ///< Unique among the element types of the process: the key of the workspaces.
         registry::LawMask laws_ = 0;
         bool law_rates_ = false;
         bool rate_residuals_ = false;
         std::array<std::array<unsigned char, registry::kNumDomain>, 2> field_operators_{}; ///< Nodal, element; by domain.
         /// The FEs to reinit, by domain, operation and whether laws are selected; the first gives the geometry.
-        std::vector<std::vector<libMesh::FEAbstract *>> needed_fes_;
+        std::vector<std::vector<std::size_t>> needed_fes_;
         mutable std::map<unsigned int, std::vector<unsigned int>> variable_numbers_; ///< By system number.
         mutable std::mutex variable_numbers_mutex_;
     };
