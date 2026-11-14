@@ -134,10 +134,6 @@ Files
    One row per step: index, time, nonlinear, Newton and linear iterations, convergence, true residual, largest law
    input, wall time, output file.
 
-``emat/``
-   The element matrices of the session (binary, one file per rank), reused between steps. They can be deleted after
-   the run.
-
 Post-processing in ParaView
 ---------------------------
 

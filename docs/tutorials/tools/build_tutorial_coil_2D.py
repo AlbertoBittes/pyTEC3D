@@ -40,8 +40,7 @@ md("""
 ## 1. Setup
 
 The case folder holds the mesh (`coil_2D_avolt.vtu`) and the model data (`model_data.json`). We copy them into a fresh
-working directory: a run writes its log, the `output/` folder and the element matrices (`emat/`) in the working
-directory.
+working directory: a run writes its log and the `output/` folder in the working directory.
 """)
 
 code("""

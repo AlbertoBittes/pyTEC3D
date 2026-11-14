@@ -10,7 +10,6 @@
  *
  * Build: cmake -S solver -B build/solver -DLIBMESH_DIR=<libMesh prefix> -DPYTEC3D_BUILD_CPP_EXAMPLES=ON (docs/solver_interface.rst).
  * Run:   ./square_conductor_2d [N]        or  mpirun -n 2 ./square_conductor_2d [N]
- * The element matrices are stored in ./emat, as for every pyTEC3D run.
  */
 #include "pytec3d_session.h"
 

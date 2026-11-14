@@ -40,7 +40,7 @@ def build_grid() -> tuple[vtk.vtkUnstructuredGrid, np.ndarray]:
 
 
 def main() -> int:
-    os.chdir(tempfile.mkdtemp(prefix="pytec3d_test_"))  # the solver writes its element matrices in ./emat
+    os.chdir(tempfile.mkdtemp(prefix="pytec3d_test_"))  # the run writes its log and output/ here
     grid, xy = build_grid()
     solver = Solver.from_grid(grid, mesh_name="square_conductor")
     identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]

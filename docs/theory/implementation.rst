@@ -36,10 +36,12 @@ with :math:`\mathbf{u}` all the DOFs (A, V, VOLT, EMF). Each section of the theo
 * **Coefficients**: material properties and real constants are constant over a cell (or computed per quadrature point
   by a law). Vector and tensor parameters are rotated from the element coordinate system of the cell to the global
   frame (:ref:`theory-element-cs`).
-* **Element matrices** K, C (and M) and the operators of the output fields are computed at the first solve of a
-  session and stored in the folder ``emat`` of the working directory; the following steps reuse them (the
-  coefficients do not change in time). The right-hand side is assembled at every step from the current loads; nodal
-  loads (``CURR``, ``AMPS``) are added to the row of the DOF they load.
+* **Operators**: K, C (and M) are assembled once per session, at the first solve, as global (unconstrained)
+  matrices, and the operators of the output fields are kept in memory; the following steps reuse them (the
+  coefficients do not change in time). The constraints are applied to the global system (u = P w + g, the reduced
+  matrix P^T K P). The right-hand side is assembled at every step from the current loads (on the integrated test
+  functions of each element when its load coefficients are constant on it); nodal loads (``CURR``, ``AMPS``) are
+  added to the row of the DOF they load.
 
 .. _theory-time-integration:
 
