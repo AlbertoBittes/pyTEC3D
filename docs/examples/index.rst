@@ -27,7 +27,7 @@ The macros use paths relative to the working directory: run them from their fold
    cd examples/coil_2D_avolt
    python macro.py                      # or: mpirun -np 4 python macro.py
 
-They write ``<case>.log``, ``output/`` and ``emat/`` in the folder, and most of them end with ``save_model()``, which
+They write ``<case>.log`` and ``output/`` in the folder, and most of them end with ``save_model()``, which
 overwrites the input ``<case>.vtu`` with the solved model. To keep the repository clean, copy the folder first, together
 with ``examples/files`` and, for an evolution, its equilibrium case, keeping the folder structure. The ITER evolution
 cases read the output of their equilibrium case (``../ITER_2D_fine2/output/...``) and the waveforms of

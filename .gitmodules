@@ -1,6 +1,3 @@
-[submodule "libmesh"]
-	path = libmesh
-	url = https://github.com/libMesh/libmesh.git
 [submodule "pyTEC3D_APDL_benchmarks"]
 	path = pyTEC3D_APDL_benchmarks
 	url = https://github.com/AlbertoBittes/pyTEC3D_APDL_benchmarks.git

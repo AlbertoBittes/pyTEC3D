@@ -78,9 +78,16 @@ fi
 # --- MFEM, static, against the hypre of that PETSc and the METIS of MSYS2 ---------------------------------------------
 if want mfem && [ ! -f "${MFEM_PREFIX}/lib/libmfem.a" ]; then
   echo "==> Building MFEM"
-  CC=mpicc CXX=mpicxx HYPRE_DIR="${PETSC_PREFIX}" METIS_DIR="${MINGW}" CPU_COUNT="${CPU_COUNT}" \
-  MFEM_CMAKE_EXTRA="-G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_PREFIX_PATH=${MINGW}" \
-    "${ROOT}/solver/mfem/build_mfem.sh" "${DEPS_DIR}/src/mfem" "${MFEM_PREFIX}" opt
+  # The compilers themselves, not the MPI wrappers: those of MSYS2 are shell scripts, which the (native) CMake cannot
+  # run; MS-MPI is given to FindMPI as for the solver below. The paths in Windows form (C:/...): MFEM records them in
+  # its MFEMConfig.cmake, read by the native CMake of the solver.
+  CC=gcc CXX=g++ HYPRE_DIR="$(cygpath -m "${PETSC_PREFIX}")" METIS_DIR="$(cygpath -m "${MINGW}")" \
+  CPU_COUNT="${CPU_COUNT}" \
+  MFEM_CMAKE_EXTRA="-G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_PREFIX_PATH=$(cygpath -m "${MINGW}")
+    -DMPI_C_SKIP_MPICXX=ON -DMPI_CXX_SKIP_MPICXX=ON
+    -DMPI_C_INCLUDE_PATH=$(cygpath -m "${MINGW}/include") -DMPI_CXX_INCLUDE_PATH=$(cygpath -m "${MINGW}/include")
+    -DMPI_C_LIB_NAMES=msmpi -DMPI_CXX_LIB_NAMES=msmpi -DMPI_msmpi_LIBRARY=$(cygpath -m "${MSMPI_LIBRARY}")" \
+    "${ROOT}/solver/mfem/build_mfem.sh" "${DEPS_DIR}/src/mfem" "$(cygpath -m "${MFEM_PREFIX}")" opt
 fi
 
 want solver || exit 0

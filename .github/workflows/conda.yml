@@ -38,7 +38,7 @@ env:
   # cache; the MFEM ref is part of the key already).
   PETSC_VERSION: "3.26.0"
   WINDOWS_PETSC_REVISION: "2"
-  WINDOWS_MFEM_REVISION: "1"
+  WINDOWS_MFEM_REVISION: "2"
   MFEM_REF: ${{ inputs.mfem_ref || 'v4.9' }}
 
 jobs:

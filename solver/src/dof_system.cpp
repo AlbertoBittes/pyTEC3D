@@ -1215,20 +1215,21 @@ void DofSystem::accumulate_fields(pytec3d::FieldKind kind, std::vector<std::vect
         }
     }
     // The terms evaluated at every output: dynamic fields (laws), loads alone (e.g. Jt = Js).
-    ElementBuilder builder(es_);
-    builder.set_vectors(local_vectors());
-    for (const int e : evaluated_field_elements_[k])
-    {
-        builder.set_element(e);
-        const int row0 = field_offsets_[k][static_cast<std::size_t>(e)];
-        const int n = field_offsets_[k][static_cast<std::size_t>(e) + 1] - row0;
-        ElementBuilder::Vector block(static_cast<unsigned int>(n));
-        for (int i = 0; i < n; ++i)
-            block(static_cast<unsigned int>(i)) = values(row0 + i);
-        builder.add_evaluated_fields(kind, layout, block);
-        for (int i = 0; i < n; ++i)
-            values(row0 + i) = block(static_cast<unsigned int>(i));
-    }
+    // On the threads: each element updates only its own block of values.
+    const std::vector<int> &evaluated = evaluated_field_elements_[k];
+    const LocalVectors vectors = local_vectors();
+    parallel_for(es_, &vectors, 0, static_cast<int>(evaluated.size()), [&](ElementBuilder &builder, int j)
+                 {
+                     const int e = evaluated[static_cast<std::size_t>(j)];
+                     builder.set_element(e);
+                     const int row0 = field_offsets_[k][static_cast<std::size_t>(e)];
+                     const int n = field_offsets_[k][static_cast<std::size_t>(e) + 1] - row0;
+                     ElementBuilder::Vector block(static_cast<unsigned int>(n));
+                     for (int i = 0; i < n; ++i)
+                         block(static_cast<unsigned int>(i)) = values(row0 + i);
+                     builder.add_evaluated_fields(kind, layout, block);
+                     for (int i = 0; i < n; ++i)
+                         values(row0 + i) = block(static_cast<unsigned int>(i)); });
 
 #pragma omp parallel for schedule(dynamic, 64)
     for (int e = 0; e < mesh.n_local_elements(); ++e)

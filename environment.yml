@@ -7,7 +7,7 @@
 #   conda install -c ./output -c conda-forge pytec3d-solver        # the solver just built, into this environment
 #
 # The solver is never compiled into this environment directly: it is built as a package (conda/recipe.yaml), against
-# the conda-forge PETSc / Open MPI and the libMesh of the recipe.
+# the conda-forge PETSc / hypre / Open MPI and the MFEM of the recipe (solver/mfem/build_mfem.sh).
 name: pytec3d-dev
 channels:
   - conda-forge
