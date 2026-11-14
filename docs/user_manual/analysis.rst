@@ -116,7 +116,7 @@ then back to 0.5. A change of theta costs one refactorization of the system matr
 Matrix reuse
 ------------
 
-The element matrices are computed at the first solve of a session; the system matrix and its factorization are
+The operators (K, C, M) are assembled at the first solve of a session; the system matrix and its factorization are
 reused at the following steps as long as **dt, theta (beta, gamma), transient_effects and the constraint rows** (the
 constrained DOFs, their masters and coefficients; not the prescribed values) do not change. The step report says
 whether the matrix was "assembled and factorized" or "reused". For long transients keep a constant dt where possible;

@@ -424,7 +424,7 @@ Differences from ``AVA3D_nodal``
    * Dirichlet values of A: component 2 of ``_A`` on the midside nodes, the tangential circulation along the edge
      (``_A = 0`` on the midside nodes of a face fixes :math:`\mathbf{n}\times\mathbf{A}=0` there). No nodal frame
      rotation is needed (the values are scalars). A non-zero value is :math:`\int\mathbf{A}\cdot d\mathbf{l}` from the
-     lexicographically smaller end point of the edge to the larger one (compare x, then y, then z: libMesh's edge
+     lexicographically smaller end point of the edge to the larger one (compare x, then y, then z: the solver's edge
      orientation), e.g. a uniform field :math:`\mathbf{B}_0` through :math:`\mathbf{A}=\tfrac12\mathbf{B}_0\times
      \mathbf{x}` (the same holds for every Nedelec field). :func:`pytec3d.tree_gauge.edges` lists the edges of
      the mesh (or of some cells) with their midside point and their end points in this orientation, and
@@ -554,7 +554,7 @@ Setup
      winding, no circuit). Take any field :math:`\mathbf{T}_0` with :math:`\nabla\times\mathbf{T}_0=\mathbf{J}` (the
      current density of the winding at unit current) that is **zero outside the winding and the hole it encloses**,
      and impose its circulations: ``_T`` = :math:`I(t)\int_e\mathbf{T}_0\cdot d\mathbf{l}` on every edge of those cells
-     (component 2 of the midside points, in libMesh's orientation: :func:`pytec3d.tree_gauge.edges` and
+     (component 2 of the midside points, in the solver's orientation: :func:`pytec3d.tree_gauge.edges` and
      :func:`pytec3d.tree_gauge.edge_circulations`), at each step. The winding cells are
      SOLID_CONDUCTOR (their ``rho`` is not used: T is fixed; ``Jt`` shows the coil current), the hole cells CUT_LAYER
      (T without conduction, with their ``mur``: air or iron). :math:`\phi` does the rest. Several coils add their
@@ -632,7 +632,7 @@ a conductor carrying :math:`I_z`, a strip from the conductor to the boundary.
 3. **Classify the edges of the layer**. *Planar* edges lie on :math:`\Sigma` (the side c = 0) or on the opposite face
    of the layer (c = 1); *crossing* edges have one end on each side. ``_T`` = 0 (component 2 of their midside nodes) on
    the planar edges. The crossing edges carry the current: the circulation of :math:`I\nabla c` along each one is
-   :math:`\pm I`, + when its libMesh orientation (from the lexicographically smaller end point, x then y then z, to
+   :math:`\pm I`, + when its orientation (from the lexicographically smaller end point, x then y then z, to
    the larger) goes from the :math:`\Sigma` side to the other side, - otherwise (:func:`pytec3d.tree_gauge.edges` of
    the layer cells gives each edge with its start and end point in that orientation).
 4. **The junction with the conductor**: the conductor has ``_T`` = 0 on its surface edges, except the crossing edges
@@ -762,7 +762,7 @@ Setup
      iron, :math:`\mathbf{H}\approx0`) they cancel exactly. A source field per cell (piecewise constant) is not in that
      space: it is the textbook cancellation case.
    * **Hs given instead of solved**: ``_Hs`` on every edge (the circulations of a known field with the right curl,
-     e.g. of the Biot-Savart field of the coils, component 2 of the midside points in libMesh's orientation) removes
+     e.g. of the Biot-Savart field of the coils, component 2 of the midside points in the solver's orientation) removes
      the Hs rows: only :math:`\phi` is solved. Circulations, not point values: their discrete curl is then exactly
      the flux of the current through each face (Stokes), so the cancellation stays exact.
    * Cost: Hs adds one unknown per edge of the whole mesh (air included) to the system of :math:`\phi`; a separate
@@ -818,7 +818,7 @@ Each element type of ``element_types.json`` lists:
   ``constants`` (``mu0``);
 * ``parameters``: ``mat.`` material properties, ``rc.`` real constants, ``me.`` element loads (cell arrays), ``mn.``
   nodal loads (point arrays), each with the domains where it exists and an optional default; the suffix ``[]`` or ``[][]`` makes it a vector or a tensor;
-* ``expressions``: derived coefficients, C++ expressions on the libMesh types, optionally per domain;
+* ``expressions``: derived coefficients, C++ expressions on the solver's types (``la.h``), optionally per domain;
 * ``dof_fields``, ``nodal_fields``, ``element_fields``: the fields, their finite elements and domains; a Lagrange
   DOF field may name an ``mn.`` parameter of its own type as its ``nodal_loads`` (a scalar for a scalar field, a
   vector, in the nodal frames, for a vector field: :doc:`loads`); Lagrange fields have the order ``option2``,
@@ -839,7 +839,7 @@ Writing expressions
 -------------------
 
 The ``constants``, the ``expressions`` and the C++ ``default`` values of an element type are C++ expressions. The
-generator copies them into the solver, so they are written with the C++ operators and the libMesh vector and tensor
+generator copies them into the solver, so they are written with the C++ operators and the solver's vector and tensor
 classes. Each name of a parameter or expression in the text is replaced by its value on the element. The key gives
 the type of the result: ``nu`` a ``Real``, ``coil_j[]`` a ``RealVectorValue``, ``nu[][]`` a ``RealTensorValue``. An
 expression that gives another type does not compile.
@@ -847,16 +847,14 @@ expression that gives another type does not compile.
 The types and their API
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-``Real`` is ``double``. ``RealVectorValue`` and ``RealTensorValue`` are libMesh's 3-component vector and 3 x 3 tensor
-(``VectorValue<Real>`` and ``TensorValue<Real>``). Most of their operations come from the base classes ``TypeVector``
-and ``TypeTensor``, documented in the libMesh Doxygen:
+``Real`` is ``double``. ``RealVectorValue`` and ``RealTensorValue`` are the 3-component vector and 3 x 3 tensor of the
+solver (``pytec3d::la``, ``solver/include/la.h``), with the operations of the element library:
 
-* `TypeVector <https://libmesh.github.io/doxygen/classlibMesh_1_1TypeVector.html>`_ and
-  `VectorValue <https://libmesh.github.io/doxygen/classlibMesh_1_1VectorValue.html>`_;
-* `TypeTensor <https://libmesh.github.io/doxygen/classlibMesh_1_1TypeTensor.html>`_ and
-  `TensorValue <https://libmesh.github.io/doxygen/classlibMesh_1_1TensorValue.html>`_;
-* the free functions (``outer_product``) are in the
-  `libMesh namespace <https://libmesh.github.io/doxygen/namespacelibMesh.html>`_.
+* vectors: ``v(i)``, ``+``, ``-``, scalar ``*`` and ``/``, ``v * w`` (dot product), ``cross()``, ``norm()``,
+  ``norm_sq()``, ``unit()``;
+* tensors: ``T(i, j)``, ``+``, ``-``, scalar ``*`` and ``/``, ``T * v``, ``T * S``, ``contract()`` (T : S),
+  ``transpose()``, ``inverse()``, ``det()``, ``tr()``, ``norm()``;
+* the free function ``outer_product(v, w)`` and the constant ``pi``.
 
 The operations most useful in a coefficient:
 
@@ -950,7 +948,7 @@ component or a norm of a vector or a tensor, not to the vector itself.
    * - ``finite``
      - ``std::isfinite(x) ? x : 0.0``
 
-Only ``<cmath>`` and the libMesh types are included, and the solver is C++17. So ``std::clamp`` (``<algorithm>``)
+Only ``<cmath>`` and the solver's types (``la.h``) are included, and the solver is C++17. So ``std::clamp`` (``<algorithm>``)
 does not compile; use ``std::fmin(std::fmax(x, lo), hi)``. ``std::numbers::pi`` (C++20) does not compile either;
 use ``pi``. The name after ``std::`` is replaced like any other name: do not give a parameter or an expression the
 name of a function you call (a parameter ``tanh`` breaks ``std::tanh``).

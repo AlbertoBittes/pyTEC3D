@@ -15,7 +15,7 @@ namespace pytec3d
 
     namespace
     {
-        using libMesh::Real;
+        using pytec3d::la::Real;
 
         [[noreturn]] void fail(const std::string &message)
         {
@@ -23,14 +23,14 @@ namespace pytec3d
         }
 
         // A vector or tensor given in the axes of the element, in the global axes.
-        ParameterValue to_global(const ParameterValue &value, const libMesh::TensorValue<Real> &rotation)
+        ParameterValue to_global(const ParameterValue &value, const pytec3d::la::TensorValue<Real> &rotation)
         {
             switch (value.type())
             {
             case ParameterType::Vector:
-                return ParameterValue(libMesh::RealVectorValue(rotation * value.vector()));
+                return ParameterValue(pytec3d::la::RealVectorValue(rotation * value.vector()));
             case ParameterType::Tensor:
-                return ParameterValue(libMesh::RealTensorValue(rotation * value.tensor() * rotation.transpose()));
+                return ParameterValue(pytec3d::la::RealTensorValue(rotation * value.tensor() * rotation.transpose()));
             case ParameterType::Scalar:
                 break;
             }

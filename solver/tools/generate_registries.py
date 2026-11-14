@@ -40,7 +40,7 @@ element_types.json, "element_types": { "<name>": {
       nodal loads). A "domain" list limits the
       domains where a parameter exists; a "default" (mat. and rc.) is the value used when the model data leaves
       it undefined: a number, its components, or C++ of the constants. Constants and expressions are C++ on the
-      libMesh types (the std math functions, outer_product, I the identity tensor, axisymmetric); each
+      solver math types (la.h: the std math functions, outer_product, I the identity tensor, axisymmetric); each
       expression is compiled into evaluate_expression(). Everywhere else a parameter is written by name.
 
   "dof_fields":     { "A": {"finite_elements": "NEDELEC_ONE", "active_components": ["z"],
@@ -51,7 +51,7 @@ element_types.json, "element_types": { "<name>": {
       DOF fields are LAGRANGE (LAGRANGE_VEC for a vector) unless finite_elements says NEDELEC_ONE; nodal fields
       L2_LAGRANGE(_VEC); element fields MONOMIAL CONSTANT. Lagrange families take the order of the options
       (option2); NEDELEC_ONE is first order.
-      Variables: every field is one libMesh variable. A vector with all the components of the element dimension
+      Variables: every field is one solver variable. A vector with all the components of the element dimension
       (2D or 3D) is a vector variable named like the field (LAGRANGE_VEC, L2_LAGRANGE_VEC, NEDELEC_ONE,
       MONOMIAL_VEC); a single component is a scalar variable <field>_<c> (e.g. A_z of a 2D element). A nodal and an
       element field can share a name.
@@ -127,10 +127,10 @@ from collections import OrderedDict
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Names an expression can use without a namespace.
 STD_FUNCTIONS = ("abs", "sqrt", "cbrt", "pow", "exp", "log", "sin", "cos", "tan", "atan2", "hypot", "min", "max")
-LIBMESH_NAMES = ("Real", "RealVectorValue", "RealTensorValue", "pi", "outer_product")
+LA_NAMES = ("Real", "RealVectorValue", "RealTensorValue", "pi", "outer_product")
 MAX_LAW_INPUTS = 2  # extra inputs of a law (LawSpec::inputs)
 MAX_LAW_CURVES = 2  # extra curves of a law (LawInfo::curves)
-RESERVED_NAMES = {"axisymmetric", "source", "input", "curve", "I", "std", "libMesh", *STD_FUNCTIONS, *LIBMESH_NAMES}
+RESERVED_NAMES = {"axisymmetric", "source", "input", "curve", "I", "std", "libMesh", "pytec3d", "la", *STD_FUNCTIONS, *LA_NAMES}
 CPP_KEYWORDS = {
     "alignas", "alignof", "and", "asm", "auto", "bool", "break", "case", "catch", "char", "class", "const",
     "constexpr", "continue", "default", "delete", "do", "double", "else", "enum", "explicit", "export",
@@ -539,7 +539,7 @@ class ElementType:
             else:
                 field["family"] = "MONOMIAL_VEC" if multi else "MONOMIAL"
                 field["order"] = "Constant"
-            # Every field is one libMesh variable: a vector field with all the components of the element dimension
+            # Every field is one solver variable: a vector field with all the components of the element dimension
             # (2D or 3D) a vector variable named like the field, a single component the scalar variable <field>_<c>.
             field["variable"] = f"{name}_{COMPONENTS[components[0]]}" if single_component else name
 
@@ -1016,7 +1016,7 @@ def read_registries(resource_dir):
                          "law or has another type in another element type.")
     output_index = {name: i for i, name in enumerate(law_outputs)}
 
-    # libMesh variables: every label the element types use, in the order of fields.json.
+    # Solver variables: every label the element types use, in the order of fields.json.
     variables = OrderedDict()
     nodal_loads = OrderedDict()
     for field_name, kind in fields.items():
@@ -1091,8 +1091,8 @@ def emit_enum(out, src, enum, names, doc):
 
 
 def emit_scope(out, indent):
-    for name in LIBMESH_NAMES:
-        out.append(f"{indent}using libMesh::{name};")
+    for name in LA_NAMES:
+        out.append(f"{indent}using pytec3d::la::{name};")
     for name in STD_FUNCTIONS:
         out.append(f"{indent}using std::{name};")
     out.append(f"{indent}[[maybe_unused]] const RealTensorValue I(1, 0, 0, 0, 1, 0, 0, 0, 1);")
@@ -1227,7 +1227,7 @@ def render_registries(registries):
     out.append("")
 
     variables = registries["variables"]
-    emit_enum(out, src, "VariableId", list(variables), "libMesh variable labels the fields can have, in system order.")
+    emit_enum(out, src, "VariableId", list(variables), "Solver variable labels the fields can have, in system order.")
     out.append("enum class VariableKind : unsigned char")
     out.append("{")
     out.append("    Scalar,    ///< A scalar field.")
@@ -1236,7 +1236,7 @@ def render_registries(registries):
     out.append("};")
     out.append("struct VariableInfo")
     out.append("{")
-    out.append("    std::string_view label;     ///< Of the libMesh variable.")
+    out.append("    std::string_view label;     ///< Of the solver variable.")
     out.append("    std::string_view api_label; ///< Of the grid arrays (solution and _ constraint arrays).")
     out.append("    FieldId field;")
     out.append("    unsigned char component;    ///< Physical component of a Component variable.")
@@ -1481,7 +1481,7 @@ def render_formulations(registries):
         out.append(f"inline constexpr FieldSpec {p}Fields[] = {{")
         for f in t.fields:
             components = list(f["components"]) + [0] * (3 - len(f["components"]))
-            family = f"libMesh::{f['family']}" if f["family"] else "libMesh::INVALID_FE"
+            family = f"FEFamily::{f['family']}" if f["family"] else "FEFamily::INVALID_FE"
             order = f"OrderRule::{f['order']}"
             load = f"registry::FieldId::{f['nodal_load']}" if f["nodal_load"] else "registry::FieldId::COUNT"
             out.append(f"    {{registry::FieldId::{f['name']}, FieldKind::{FIELD_KINDS[f['kind']]}, ValueType::{f['value']}, "
@@ -1492,7 +1492,7 @@ def render_formulations(registries):
         if t.fes:
             out.append(f"inline constexpr FESpec {p}FEs[] = {{")
             for fe in t.fes:
-                out.append(f"    {{libMesh::{fe['family']}, {'true' if fe['vector'] else 'false'}, OrderRule::{fe['order']}}},")
+                out.append(f"    {{FEFamily::{fe['family']}, {'true' if fe['vector'] else 'false'}, OrderRule::{fe['order']}}},")
             out.append("};")
         if t.nablas:
             out.append(f"inline constexpr NablaSpec {p}Nablas[] = {{")

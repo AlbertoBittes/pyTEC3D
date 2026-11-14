@@ -1,6 +1,6 @@
 /**
  * @file pytec3d_session.h
- * @brief A solver session: the process-wide libMesh / MPI runtime and one model loaded into it.
+ * @brief A solver session: the process-wide runtime (MPI, PETSc, hypre) and one model loaded into it.
  *
  * The session is plain C++, with no Python or VTK dependency: the model is handed to it as views of the caller's
  * arrays and the model data as JSON (model_input.h), the time step and the solver settings with each solve. A Python
@@ -17,16 +17,12 @@
 
 class pyTEC3DModel;
 
-namespace libMesh
-{
-    class LibMeshInit;
-}
 
 class pyTEC3DSession
 {
 public:
     /**
-     * @brief Creates a session, initialising the libMesh / MPI runtime on first use in the process.
+     * @brief Creates a session, initialising the MPI / PETSc / hypre runtime on first use in the process.
      * @param num_threads_per_mpi_process Threads per MPI rank; only the first session of the process sets it.
      */
     explicit pyTEC3DSession(int num_threads_per_mpi_process = 1);
@@ -52,11 +48,11 @@ public:
      */
     void set_arrays(const pytec3d::ModelArrays &arrays);
 
-    /** @brief Releases the model and its libMesh and PETSc resources; the runtime stays up. Idempotent. */
+    /** @brief Releases the model and its MFEM and PETSc resources; the runtime stays up. Idempotent. */
     void close();
 
     /**
-     * @brief Shuts down the process-wide libMesh / spdlog runtime.
+     * @brief Shuts down the process-wide runtime (PETSc, hypre, MPI if it started it, spdlog).
      *
      * Must be called after all sessions have been closed. After shutdown the runtime cannot be re-initialised
      * in the same process (MPI cannot be initialised twice).
@@ -83,7 +79,7 @@ public:
 private:
     void require_loaded() const;
 
-    std::shared_ptr<libMesh::LibMeshInit> libmesh_init_; ///< Shared by all sessions of the process.
+    std::shared_ptr<void> runtime_; ///< Shared by all sessions of the process.
     std::unique_ptr<pyTEC3DModel> model_;
     bool closed_ = false;
 };

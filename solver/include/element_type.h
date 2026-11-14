@@ -1,15 +1,16 @@
 /**
  * @file element_type.h
- * @brief An element type instantiated for its options: the libMesh FEs, quadrature and nablas of its spec.
+ * @brief An element type instantiated for its options: the FEs, quadrature and nablas of its spec.
  *
  * The formulation itself is the compiled spec (formulation_spec.h, generated from element_types.json). An
  * ElementType adds what depends on the options of the model data (order, axisymmetry):
- *  - the FEs, one per FESpec, at the order of the options (FIRST for NEDELEC_ONE), sharing one Gauss rule of
- *    the highest default order among them;
+ *  - the FEs, one per FESpec, at the order of the options (first for NEDELEC_ONE), sharing one Gauss rule of
+ *    the highest default order among them (2 p + 1, p the order of an FE, as libMesh);
  *  - the nablas, bound to their FE;
- *  - the libMesh variables of each field, with family and order.
- * It reinit()s on an element only the FEs an operation needs, and tells where each field sits in the
- * element vectors of a system. Evaluating the kernels is ElementEvaluator's job.
+ *  - the variables of each field, with family and order.
+ * It reinit()s on an element only the FEs an operation needs (the MFEM elements of the cell, in physical space),
+ * and tells where each field sits in the element vectors of a system. Evaluating the kernels is ElementEvaluator's
+ * job.
  *
  * What an operation needs follows from the spec: the evaluations of the operation, their terms active in
  * the domain (with or without the laws selected on the element), the kernels of those terms, the nablas of the
@@ -25,12 +26,11 @@
 #include <string_view>
 #include <vector>
 
-#include <libmesh/elem.h>
-#include <libmesh/fe.h>
-#include <libmesh/point.h>
-#include <libmesh/quadrature.h>
-#include <libmesh/system.h>
+#include <mfem.hpp>
 
+#include "dof_space.h"
+#include "fe_mesh.h"
+#include "quadrature.h"
 #include "formulation_spec.h"
 #include "nabla.h"
 #include "registries.h"
@@ -57,12 +57,32 @@ namespace pytec3d
         bool axisymmetric = false; ///< 2D elements only.
     };
 
-    /** @brief The libMesh variable of a field. */
-    struct LibMeshVariable
+    /** @brief The variable of a field. */
+    struct SystemVariable
     {
         registry::VariableId id;
-        libMesh::FEFamily family;
-        libMesh::Order order;
+        formulation::FEFamily family;
+        int order;
+    };
+
+    /** @brief One element of the mesh, with the finite elements of its cells. */
+    struct MeshElement
+    {
+        const fem::FEMesh *mesh = nullptr;
+        const fem::FECatalog *catalog = nullptr;
+        const fem::QuadratureData *quadrature = nullptr; ///< Its points and Jacobians.
+        const fem::ReferenceTables *tables = nullptr;    ///< The reference shapes of its elements.
+        int index = -1; ///< Local element.
+
+        std::int64_t cell() const { return mesh->cell(index); }
+        int subdomain() const { return mesh->subdomain(index); }
+    };
+
+    /** @brief The quadrature of the current element: weights (JxW) and points. */
+    struct ElementGeometry
+    {
+        std::vector<la::Real> JxW;
+        std::vector<la::Point> xyz;
     };
 
     class ElementType
@@ -79,8 +99,8 @@ namespace pytec3d
         const ElementTypeOptions &options() const { return options_; }
 
         const FieldSpec &field(std::size_t index) const { return spec_->fields[index]; }
-        /** @brief The libMesh variable of @p field, at the order of the options. */
-        LibMeshVariable variable(const FieldSpec &field) const;
+        /** @brief The variable of @p field, at the order of the options. */
+        SystemVariable variable(const FieldSpec &field) const;
 
         /** @brief True when the field exists in @p domain. */
         static bool active(const FieldSpec &field, registry::Domain domain);
@@ -135,6 +155,8 @@ namespace pytec3d
         unsigned int field_operators(FieldKind kind, registry::Domain domain) const;
 
         const Nabla &nabla(std::size_t index) const { return nablas_[index]; }
+        /** @brief The order of the Gauss rule of its elements (2 p + 1, p the highest order of its FEs). */
+        int quadrature_order() const { return quadrature_order_; }
 
         /**
          * @brief True when the DOF field @p field has a row in K in @p domain: it is the test of a block without dt()
@@ -145,10 +167,12 @@ namespace pytec3d
 
         /**
          * @brief reinit()s on @p elem the FEs @p operation needs in @p domain.
-         * @return The FE that gives JxW and the quadrature points; null when the operation computes nothing there.
+         * @return JxW and the quadrature points; null when the operation computes nothing there.
          */
-        const libMesh::FEAbstract *reinit(const libMesh::Elem &elem, registry::Domain domain, Operation operation,
-                                          registry::LawMask laws) const;
+        const ElementGeometry *reinit(const MeshElement &elem, registry::Domain domain, Operation operation,
+                                      registry::LawMask laws) const;
+        /** @brief The state of FE @p index after the last reinit(). */
+        const FEState &fe_state(std::size_t index) const { return scratch().fes[index]; }
 
         /**
          * @brief The positions of the values of one field in the element vector: the block of its variable, value i
@@ -174,35 +198,45 @@ namespace pytec3d
         /**
          * @brief Where, in the element vectors of @p system, each value of each field of @p kind sits.
          *
-         * Follows the order of DofMap::dof_indices(): the variables active on the subdomain in system order,
-         * each with FEInterface::n_dofs() DOFs (node by node, then on the element), so positions are prefix sums
-         * of those counts, with no DOF lookup. The fields are those of @p kind active in @p domain; each is a
-         * FieldRange, the block of its variable. The variable numbers of the fields are looked up once per system.
+         * Follows the element vectors of the system (fem::SystemLayout): the variables active on the subdomain in
+         * system order, each the shape functions of its finite element, so positions are prefix sums of those counts.
+         * The fields are those of @p kind active in @p domain; each is a FieldRange, the block of its variable. The
+         * variable numbers of the fields are looked up once per system.
          */
-        FieldIndices element_indices(const libMesh::System &system,
-                                     const libMesh::Elem &elem,
+        FieldIndices element_indices(const fem::SystemLayout &system,
+                                     const MeshElement &elem,
                                      FieldKind kind,
                                      registry::Domain domain) const;
 
     private:
-        libMesh::Order order(formulation::OrderRule rule) const;
+        int order(formulation::OrderRule rule) const;
 
-        /** @brief Variable number in @p system of the variable of each field (by field index; libMesh::invalid_uint
+        /** @brief Variable number in @p system of the variable of each field (by field index; la::invalid_uint
          * if not in the system); looked up once. */
-        const std::vector<unsigned int> &variable_numbers(const libMesh::System &system) const;
+        const std::vector<unsigned int> &variable_numbers(const fem::SystemLayout &system) const;
 
         const formulation::ElementTypeSpec *spec_;
         ElementTypeOptions options_;
-        std::unique_ptr<libMesh::QBase> quadrature_;
-        std::vector<std::unique_ptr<libMesh::FEAbstract>> fes_;
+        int quadrature_order_ = 0;
+        /** @brief What reinit() computes on the current element, per thread: the FE states and the geometry. */
+        struct Scratch
+        {
+            std::vector<FEState> fes;
+            ElementGeometry geometry;
+        };
+        /** @brief The scratch of the calling thread (a copy of the configured FE states at its first use). */
+        Scratch &scratch() const;
+
+        std::vector<FEState> fes_; ///< One per FESpec, configured (what the nablas read); the threads copy them.
+        std::size_t instance_ = 0;  ///< Unique among the element types of the process: the key of the scratches.
         std::vector<Nabla> nablas_;
         registry::LawMask laws_ = 0;
         bool law_rates_ = false;
         bool rate_residuals_ = false;
         std::array<std::array<unsigned char, registry::kNumDomain>, 2> field_operators_{}; ///< Nodal, element; by domain.
-        /// The FEs to reinit, by domain, operation and whether laws are selected; the first gives the geometry.
-        std::vector<std::vector<libMesh::FEAbstract *>> needed_fes_;
-        mutable std::map<unsigned int, std::vector<unsigned int>> variable_numbers_; ///< By system number.
+        /// The FEs to reinit (indices), by domain, operation and whether laws are selected.
+        std::vector<std::vector<std::size_t>> needed_fes_;
+        mutable std::map<const fem::SystemLayout *, std::vector<unsigned int>> variable_numbers_; ///< By system.
         mutable std::mutex variable_numbers_mutex_;
     };
 } // namespace pytec3d

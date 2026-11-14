@@ -1,49 +1,36 @@
 /**
  * @file element_builder.h
- * @brief Per-element assembly: reinits the FEs, resizes the matrices and calls the kernels of the element type.
+ * @brief Per-element assembly: the matrices, vectors and fields of one element from the kernels of its element type.
  *
  * ElementBuilder collects what an element needs (material and real constants, local-to-global rotation,
  * curves, loads of the model arrays, local solution), finds where each field sits in the element vectors of the systems
  * (ElementType::element_indices) and has an ElementEvaluator run the evaluations of the element type:
- *   - Stiffness (Ke) and time-derivative (Ce) matrices of the DOF system.
- *   - Source (RHS) vector, and the tangent matrix / residual of the laws selected on the element.
- *   - Nodal and element post-processing fields, written to the solution systems.
- *
- * The formulations are those of element_types.json (formulations.h, generated).
+ *   - Stiffness (Ke), time-derivative (Ce) and, for second-order element types, mass (Me) matrices of the DOF system;
+ *   - the source (RHS) vector, and the tangent matrix / residual of the laws selected on the element;
+ *   - the values of its nodal and element fields.
+ * The element vectors are in the shape functions of the element (DofSpace::element_values()); the DOF system moves them
+ * to the global DOFs. The formulations are those of element_types.json (formulations.h, generated).
  */
 #pragma once
 
-#include <string>
-#include <map>
-#include <unordered_map>
+#include <array>
 #include <vector>
 
-#include <libmesh/dense_matrix.h>
-#include <libmesh/dense_vector.h>
-#include <libmesh/dof_map.h>
-#include <libmesh/elem.h>
-#include <libmesh/equation_systems.h>
-#include <libmesh/numeric_vector.h>
-
+#include "dof_space.h"
 #include "element_evaluator.h"
 #include "element_parameters.h"
 #include "element_type.h"
-#include "model_element_types.h"
+#include "la.h"
 #include "model_data.h"
+#include "model_element_types.h"
 #include "time_step.h"
-#include "variables_map.h"
 
 class pyTEC3DEquationSystems;
 
-namespace libMesh
-{
-    class ImplicitSystem;
-}
-
-/** @brief Per-element context bundle populated by set_element_data(). */
+/** @brief Per-element context bundle populated by set_element(). */
 struct ElemData
 {
-    const libMesh::Elem *elem = nullptr;               ///< Active element.
+    pytec3d::MeshElement elem;                         ///< Local element.
     const ModelElementTypes::Entry *entry = nullptr; ///< Element type and domain of the element's subdomain.
     unsigned int material_num = 0;                     ///< Material ID (MATERIAL cell array).
     unsigned int real_constant_num = 0;                ///< Real-constant ID (CONSTANT cell array).
@@ -51,131 +38,84 @@ struct ElemData
     pytec3d::registry::LawMask laws = 0;               ///< Laws selected by its TYPE, MATERIAL and CONSTANT rows.
 };
 
-/**
- * @brief Builds per-element matrices, vectors and post-processing fields from the element kernels.
- *
- * Constructed once per assembly pass. Call set_element_data() before any build_*() method.
- */
+/** @brief The local values (DofSpace::gather) of the vectors of the DOF system an element may read. */
+struct LocalVectors
+{
+    const std::vector<double> *solution = nullptr;
+    const std::vector<double> *old_solution = nullptr;
+    const std::vector<double> *velocity = nullptr;
+    const std::vector<double> *acceleration = nullptr;
+    const std::vector<double> *old_velocity = nullptr;
+    const std::vector<double> *old_acceleration = nullptr;
+};
+
 class ElementBuilder
 {
 public:
-    enum MatricesSet
-    {
-        DOF_SOLUTION_MATRICES,      ///< {Ke, Ce} and Me for second-order element types
-        TANGENT_STIFFNESS_MATRICES,
-        NODAL_SOLUTION_MATRICES,    ///< Static nodal fields: {F u, F du/dt, F d2u/dt2} (terms without trial: at output)
-        ELEMENT_SOLUTION_MATRICES,  ///< Static element fields: same layout
-        NUM_MATRICES_SETS
-    };
+    using Matrix = pytec3d::la::DenseMatrix<pytec3d::la::Number>;
+    using Vector = pytec3d::la::DenseVector<pytec3d::la::Number>;
 
-    enum VectorsSet
-    {
-        RHS_VECTORS,
-        RESIDUAL_VECTORS,
-        NUM_VECTORS_SETS
-    };
+    explicit ElementBuilder(const pyTEC3DEquationSystems &equation_systems);
 
-    enum DOFMatrices
-    {
-        Ke,
-        Ce,
-        NUM_DOF_MATRICES,
-    };
-
-    /** @brief Constructs the builder and caches the model data of the equation systems. */
-    ElementBuilder(pyTEC3DEquationSystems *equation_systems);
-
-    /** @brief Populates the ElemData context for element @p elem. */
-    void set_element_data(const libMesh::Elem *elem);
-
-    /** @brief Returns the active element context. */
-    const ElemData &get_elem_data() const;
-
+    /** @brief Populates the context for local element @p e. */
+    void set_element(int e);
+    const ElemData &get_elem_data() const { return elem_data; }
     /** @brief True when laws are selected on the active element: it has a Jacobian and residual. */
-    bool nonlinear_element() const;
+    bool nonlinear_element() const { return elem_data.laws != 0; }
+    unsigned int get_n_dofs() const { return n_dofs; }
 
-    /** @brief Element matrix sets (indexed by MatricesSet). */
-    std::vector<std::vector<libMesh::DenseMatrix<libMesh::Number>>> &get_matrices() { return matrices; }
+    /** @brief The element values of the DOF system vectors the builder reads. */
+    void set_vectors(const LocalVectors &vectors) { vectors_ = vectors; }
 
-    /** @brief Element vector sets (indexed by VectorsSet). */
-    std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> &get_vectors() { return vectors; }
+    /** @brief K, C and, for second-order element types, M of the element (a zero C or M empty, 0 x 0). */
+    std::vector<Matrix> &dof_matrices() { return dof_matrices_; }
+    /** @brief The operators of the static nodal / element fields: {F u, F du/dt, F d2u/dt2} (empty if zero). */
+    std::vector<Matrix> &field_matrices(pytec3d::FieldKind kind)
+    {
+        return kind == pytec3d::FieldKind::Nodal ? nodal_matrices_ : element_matrices_;
+    }
 
-    /** @brief Builds Ke, Ce, (second-order element types) Me and the operators of the static nodal and element fields. */
+    /** @brief Builds K, C, (M) and the operators of the static nodal and element fields. */
     void build_element();
 
-    /** @brief Builds the source vector (element loads, nodal loads, magnetization). */
-    void build_element_rhs();
+    /** @brief The source vector of the element (element loads, magnetization; the nodal loads are global). */
+    Vector build_element_rhs();
 
-    /** @brief Builds the tangent matrix and residual of the law terms at the current solution; @p scheme gives the
-     * velocity and acceleration of the law terms with dt() and the scaling of their Jacobian. */
-    /** @p picard: the Jacobian of the laws with their secant (Picard iteration), not their tangent. */
-    void build_element_tangent_stiffness_residual(const TimeScheme &scheme, bool picard = false);
+    /** @brief The tangent matrix and residual of the law terms at the current solution; @p scheme gives the velocity
+     * and acceleration of the law terms with dt() and the scaling of their Jacobian; @p picard their secant. */
+    void build_element_tangent_stiffness_residual(const TimeScheme &scheme, bool picard, Matrix &tangent, Vector &residual);
 
     /** @brief True when the element has law outputs under dt() (ElementType::rate_residuals and a law selected). */
     bool rate_residual_element() const;
 
     /** @brief The outputs q(x) of the element's law terms with @p order dt() on the trial (1 or 2), the laws evaluated
-     * at @p solution: the quantity whose rates the time scheme gives (q' = c_v q(u) + hu_v q(u_n) + hv_v q'_n + ha_v
-     * q''_n, as for the DOFs). Zero on other elements. */
-    libMesh::DenseVector<libMesh::Number> law_output(const libMesh::NumericVector<libMesh::Number> &solution,
-                                                     unsigned int order);
+     * at the local vector @p solution: the quantity whose rates the time scheme gives. Zero on other elements. */
+    Vector law_output(const std::vector<double> &solution, unsigned int order);
 
-    /** @brief Nodal fields of the active element from the current solution (stored operators, read by the nodal system,
-     * plus the dynamic fields), written to the nodal system. */
-    void build_nodal_solution();
-
-    /** @brief Element fields of the active element, as build_nodal_solution(), written to the element system. */
-    void build_element_solution();
-
-    /** @brief Number of DOFs of the active element. */
-    unsigned int get_n_dofs() const { return n_dofs; }
-
-    /** @brief Shares canonical nodal-load injector ownership data with this builder instance. */
-    void set_nodal_load_map(const NodalLoadInjectorElemByVarMap *map)
-    {
-        nodal_load_map_ = map;
-    }
+    /** @brief True when the nodal / element fields of the active element have terms evaluated at every output: dynamic
+     * fields (a law selected) or terms without trial (a load alone, e.g. Jt = Js). */
+    bool has_evaluated_fields(pytec3d::FieldKind kind) const;
+    /** @brief Adds those terms to @p values, the field values of the active element in the element vector of @p layout
+     * (the static operators applied to the solution by the caller). */
+    void add_evaluated_fields(pytec3d::FieldKind kind, const pytec3d::fem::SystemLayout &layout, Vector &values);
 
 private:
-    /** @brief Material, constants, rotation and cell arrays of the active element. */
     pytec3d::ElementParameterValues::Inputs parameter_inputs() const;
-
-    /** @brief Values of @p solution on the DOFs of the active element, in element DOF order (zeros when null). */
-    libMesh::DenseVector<libMesh::Number> local_dof_vector(const libMesh::NumericVector<libMesh::Number> *solution) const;
-
-    /** @brief True when the active element is the one that adds the nodal load of @p node to @p dof_variable_name. */
-    bool should_inject_nodal_load(const std::string &dof_variable_name, libMesh::dof_id_type node_id) const;
-
-    /** @brief Adds the nodal loads of the DOF fields of the active element to @p rhs (see build_element_rhs()). */
-    void add_nodal_loads(const pytec3d::ElementType::FieldIndices &dofs, libMesh::DenseVector<libMesh::Number> &rhs) const;
-
-    /** @brief Evaluates the nodal or element fields on the DOF solution and writes the result into @p system. */
-    void build_fields(pytec3d::FieldKind kind, libMesh::System &system);
-
-
-    /** @brief Inputs of an ElementEvaluator on the active element. */
-    pytec3d::ElementEvaluator::Inputs evaluator_inputs(pytec3d::Operation operation,
-                                                       pytec3d::ElementParameterValues &values,
+    /** @brief The values of the local vector @p local on the active element (zeros when null). */
+    Vector element_vector(const std::vector<double> *local) const;
+    pytec3d::ElementEvaluator::Inputs evaluator_inputs(pytec3d::Operation operation, pytec3d::ElementParameterValues &values,
                                                        const pytec3d::ElementType::FieldIndices &dofs) const;
 
-    std::vector<std::vector<libMesh::DenseMatrix<libMesh::Number>>> matrices; ///< By MatricesSet.
-    std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> vectors;  ///< By VectorsSet.
+    const pyTEC3DEquationSystems &equation_systems_;
+    const pytec3d::fem::DofSpace &dofs_;
+    const ModelElementTypes &element_types_;
+    const pytec3d::ModelData &model_data_;
+    const pytec3d::ModelArrays &arrays_;
 
     ElemData elem_data;
-    unsigned int n_dofs = 0; ///< Number of DOFs on the active element.
-    std::vector<libMesh::dof_id_type> dof_indices_; ///< DOF system indices of the active element.
-    const NodalLoadInjectorElemByVarMap *nodal_load_map_ = nullptr;
-
-    pyTEC3DEquationSystems *equation_systems_ = nullptr;
-    libMesh::ImplicitSystem *dof_solution_system_ = nullptr;
-    libMesh::System *nodal_solution_system_ = nullptr;
-    libMesh::System *element_solution_system_ = nullptr;
-    libMesh::DofMap *dof_solution_dof_map_ = nullptr;
-
-    const ModelElementTypes *element_types_ = nullptr;
-    const pytec3d::ModelData *model_data_ = nullptr;
-    const pytec3d::ModelArrays *arrays_ = nullptr;
-    const std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>> *element_local_to_global_rotations_ = nullptr;
-    /// Node frame (node_angles) to global, by node id: the frame of the vector nodal loads.
-    const std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>> *node_local_to_global_rotations_ = nullptr;
+    unsigned int n_dofs = 0;
+    LocalVectors vectors_;
+    std::vector<Matrix> dof_matrices_;
+    std::vector<Matrix> nodal_matrices_;
+    std::vector<Matrix> element_matrices_;
 };

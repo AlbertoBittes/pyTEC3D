@@ -5,10 +5,9 @@
 #include "element_type.h"
 
 #include <algorithm>
+#include <atomic>
+#include <unordered_map>
 
-#include <libmesh/dof_map.h>
-#include <libmesh/fe_interface.h>
-#include <libmesh/quadrature_gauss.h>
 
 #include "formulations.h"
 #include "logging.h"
@@ -23,6 +22,8 @@ namespace pytec3d
         }
 
         constexpr std::size_t kNumOperations = static_cast<std::size_t>(Operation::Parameters) + 1;
+
+        std::atomic<std::size_t> next_instance{1};
 
         std::size_t needed_index(registry::Domain domain, Operation operation, bool nonlinear)
         {
@@ -91,40 +92,33 @@ namespace pytec3d
     }
 
     ElementType::ElementType(registry::ElementTypeId id, const ElementTypeOptions &options)
-        : spec_(&formulation::spec(id)), options_(options)
+        : spec_(&formulation::spec(id)), options_(options), instance_(next_instance++)
     {
         const std::string context = "element type '" + std::string(name()) + "'";
-        if (options.order < static_cast<unsigned int>(libMesh::FIRST))
+        if (options.order < 1)
             fail(context + ": order must be >= 1.");
         if (options.axisymmetric && dimension() != 2)
             fail(context + ": axisymmetric requires a 2D element type.");
         if (spec_->fes.empty())
             fail(context + " has no finite element.");
 
-        // One Gauss rule for every FE, so that all the nablas share the quadrature points.
-        unsigned int quadrature_order = 0;
+        // One Gauss rule for every FE, so that all the nablas share the quadrature points: the highest default order
+        // of the FEs, 2 p + 1 (libMesh's FEType::default_quadrature_order()).
         for (const formulation::FESpec &fe : spec_->fes)
         {
-            const libMesh::FEType type(order(fe.order), fe.family);
-            quadrature_order = std::max(quadrature_order, static_cast<unsigned int>(type.default_quadrature_order()));
-        }
-        quadrature_ = std::make_unique<libMesh::QGauss>(dimension(), static_cast<libMesh::Order>(quadrature_order));
-
-        for (const formulation::FESpec &fe : spec_->fes)
-        {
-            fes_.push_back(libMesh::FEAbstract::build(dimension(), libMesh::FEType(order(fe.order), fe.family)));
-            fes_.back()->attach_quadrature_rule(quadrature_.get());
-        }
-        // Any of them can give the geometry of an operation.
-        for (auto &fe : fes_)
-        {
-            fe->get_JxW();
-            fe->get_xyz();
+            quadrature_order_ = std::max(quadrature_order_, 2 * order(fe.order) + 1);
+            FEState state;
+            state.family = fe.family;
+            state.vdim = (fe.family == formulation::FEFamily::LAGRANGE_VEC) ? dimension() : 1;
+            fes_.push_back(state);
         }
 
         nablas_.reserve(spec_->nablas.size());
         for (const formulation::NablaSpec &nabla : spec_->nablas)
-            nablas_.emplace_back(nabla, *fes_[nabla.fe], dimension(), options.axisymmetric);
+        {
+            nablas_.emplace_back(nabla, dimension(), options.axisymmetric);
+            nablas_.back().request(fes_[nabla.fe]);
+        }
 
         for (const formulation::LawSpec &law : spec_->laws)
             laws_ |= registry::bit(law.id);
@@ -162,7 +156,7 @@ namespace pytec3d
                     const auto operation = static_cast<Operation>(o);
                     if (operation == Operation::Parameters)
                         continue;
-                    std::vector<libMesh::FEAbstract *> &needed = needed_fes_[needed_index(domain, operation, nonlinear)];
+                    std::vector<std::size_t> &needed = needed_fes_[needed_index(domain, operation, nonlinear)];
                     bool computes = false;
                     const auto add_kernel = [&](std::size_t k)
                     {
@@ -170,7 +164,7 @@ namespace pytec3d
                         {
                             if (nabla < 0)
                                 continue;
-                            libMesh::FEAbstract *fe = fes_[spec_->nablas[static_cast<std::size_t>(nabla)].fe].get();
+                            const std::size_t fe = spec_->nablas[static_cast<std::size_t>(nabla)].fe;
                             if (std::find(needed.begin(), needed.end(), fe) == needed.end())
                                 needed.push_back(fe);
                         }
@@ -210,11 +204,11 @@ namespace pytec3d
                         }
                     // Terms without nabla (a coefficient alone) still need the quadrature points.
                     if (computes && needed.empty())
-                        needed.push_back(fes_.front().get());
+                        needed.push_back(0);
                 }
     }
 
-    LibMeshVariable ElementType::variable(const FieldSpec &field) const
+    SystemVariable ElementType::variable(const FieldSpec &field) const
     {
         return {field.variable, field.family, order(field.order)};
     }
@@ -240,16 +234,16 @@ namespace pytec3d
         return field_operators_[kind == FieldKind::Nodal ? 0 : 1][static_cast<std::size_t>(domain)];
     }
 
-    libMesh::Order ElementType::order(formulation::OrderRule rule) const
+    int ElementType::order(formulation::OrderRule rule) const
     {
         switch (rule)
         {
         case formulation::OrderRule::Option:
-            return static_cast<libMesh::Order>(options_.order);
+            return static_cast<int>(options_.order);
         case formulation::OrderRule::First:
-            return libMesh::FIRST;
+            return 1;
         case formulation::OrderRule::Constant:
-            return libMesh::CONSTANT;
+            return 0;
         }
         fail("unknown order rule.");
     }
@@ -271,37 +265,155 @@ namespace pytec3d
         return false;
     }
 
-    const libMesh::FEAbstract *ElementType::reinit(const libMesh::Elem &elem, registry::Domain domain, Operation operation,
-                                                   registry::LawMask laws) const
+    const ElementGeometry *ElementType::reinit(const MeshElement &elem, registry::Domain domain, Operation operation,
+                                               registry::LawMask laws) const
     {
         if (operation == Operation::Parameters)
             return nullptr;
         const auto &needed = needed_fes_.at(needed_index(domain, operation, laws != 0));
-        for (libMesh::FEAbstract *fe : needed)
-            fe->reinit(&elem);
-        return needed.empty() ? nullptr : needed.front();
+        if (needed.empty())
+            return nullptr;
+
+        const mfem::Geometry::Type geometry = elem.mesh->mesh().GetElementGeometry(elem.index);
+        const fem::QuadratureData &quadrature = *elem.quadrature;
+        const mfem::IntegrationRule &rule = quadrature.rule(elem.index);
+        const int nq = rule.GetNPoints();
+        const int dim = static_cast<int>(dimension());
+        const double *X = quadrature.X(elem.index);
+        const double *J = quadrature.J(elem.index);
+        const double *det = quadrature.det(elem.index);
+
+        Scratch &work = scratch();
+        work.geometry.JxW.resize(static_cast<std::size_t>(nq));
+        work.geometry.xyz.resize(static_cast<std::size_t>(nq));
+        // J^-T at each point (dim x dim, in the 3 x 3 layout of QuadratureData).
+        std::vector<double> inverse_transpose(static_cast<std::size_t>(9 * nq), 0.0);
+        for (int q = 0; q < nq; ++q)
+        {
+            work.geometry.JxW[static_cast<std::size_t>(q)] = rule.IntPoint(q).weight * std::abs(det[q]);
+            work.geometry.xyz[static_cast<std::size_t>(q)] = la::Point(X[3 * q], X[3 * q + 1], X[3 * q + 2]);
+            const double *Jq = J + 9 * q;
+            double *K = inverse_transpose.data() + 9 * q;
+            const double d = det[q];
+            if (dim == 3)
+            {
+                // (J^-1)^T(i, j) = cofactor(J)(i, j) / det.
+                K[0] = (Jq[4] * Jq[8] - Jq[5] * Jq[7]) / d;
+                K[1] = (Jq[5] * Jq[6] - Jq[3] * Jq[8]) / d;
+                K[2] = (Jq[3] * Jq[7] - Jq[4] * Jq[6]) / d;
+                K[3] = (Jq[2] * Jq[7] - Jq[1] * Jq[8]) / d;
+                K[4] = (Jq[0] * Jq[8] - Jq[2] * Jq[6]) / d;
+                K[5] = (Jq[1] * Jq[6] - Jq[0] * Jq[7]) / d;
+                K[6] = (Jq[1] * Jq[5] - Jq[2] * Jq[4]) / d;
+                K[7] = (Jq[2] * Jq[3] - Jq[0] * Jq[5]) / d;
+                K[8] = (Jq[0] * Jq[4] - Jq[1] * Jq[3]) / d;
+            }
+            else
+            {
+                K[0] = Jq[4] / d;
+                K[1] = -Jq[3] / d;
+                K[3] = -Jq[1] / d;
+                K[4] = Jq[0] / d;
+            }
+        }
+
+        for (const std::size_t index : needed)
+        {
+            FEState &state = work.fes[index];
+            const formulation::FESpec &spec = spec_->fes[index];
+            const mfem::FiniteElement *fe = elem.catalog->element(spec.family, order(spec.order), geometry);
+            const fem::ReferenceTable &table = elem.tables->get(*fe, rule);
+            const int n = table.n_dofs;
+            if (state.nedelec())
+            {
+                state.vphi.assign(static_cast<std::size_t>(nq), std::vector<RealVectorValue>(static_cast<std::size_t>(n)));
+                if (state.need_curl)
+                    state.curl.assign(static_cast<std::size_t>(nq), std::vector<RealVectorValue>(static_cast<std::size_t>(n)));
+                for (int q = 0; q < nq; ++q)
+                {
+                    const double *K = inverse_transpose.data() + 9 * q;
+                    const double *Jq = J + 9 * q;
+                    for (int i = 0; i < n; ++i)
+                    {
+                        // Covariant: phi = J^-T phi_ref.
+                        const double *b = table.B.data() + static_cast<std::size_t>((q * n + i) * dim);
+                        RealVectorValue &v = state.vphi[static_cast<std::size_t>(q)][static_cast<std::size_t>(i)];
+                        for (int r = 0; r < dim; ++r)
+                            for (int k = 0; k < dim; ++k)
+                                v(static_cast<unsigned int>(r)) += K[3 * r + k] * b[k];
+                        if (!state.need_curl)
+                            continue;
+                        const double *c = table.G.data() + static_cast<std::size_t>((q * n + i) * table.curl_dim);
+                        RealVectorValue &curl = state.curl[static_cast<std::size_t>(q)][static_cast<std::size_t>(i)];
+                        if (dim == 3)
+                        {
+                            // curl phi = J curl_ref / det J.
+                            for (int r = 0; r < 3; ++r)
+                                for (int k = 0; k < 3; ++k)
+                                    curl(static_cast<unsigned int>(r)) += Jq[3 * r + k] * c[k] / det[q];
+                        }
+                        else
+                            curl(2) = c[0] / det[q];
+                    }
+                }
+            }
+            else
+            {
+                state.phi.assign(static_cast<std::size_t>(nq), std::vector<Real>(static_cast<std::size_t>(n)));
+                if (state.need_dphi)
+                    state.dphi.assign(static_cast<std::size_t>(nq), std::vector<RealVectorValue>(static_cast<std::size_t>(n)));
+                for (int q = 0; q < nq; ++q)
+                {
+                    const double *K = inverse_transpose.data() + 9 * q;
+                    for (int i = 0; i < n; ++i)
+                    {
+                        state.phi[static_cast<std::size_t>(q)][static_cast<std::size_t>(i)] =
+                            table.B[static_cast<std::size_t>(q * n + i)];
+                        if (!state.need_dphi)
+                            continue;
+                        // grad phi = J^-T grad_ref phi.
+                        const double *g = table.G.data() + static_cast<std::size_t>((q * n + i) * dim);
+                        RealVectorValue &v = state.dphi[static_cast<std::size_t>(q)][static_cast<std::size_t>(i)];
+                        for (int r = 0; r < dim; ++r)
+                            for (int k = 0; k < dim; ++k)
+                                v(static_cast<unsigned int>(r)) += K[3 * r + k] * g[k];
+                    }
+                }
+            }
+        }
+        return &work.geometry;
     }
 
-    const std::vector<unsigned int> &ElementType::variable_numbers(const libMesh::System &system) const
+    ElementType::Scratch &ElementType::scratch() const
+    {
+        thread_local std::unordered_map<std::size_t, Scratch> scratches;
+        auto it = scratches.find(instance_);
+        if (it == scratches.end())
+            it = scratches.emplace(instance_, Scratch{fes_, ElementGeometry{}}).first;
+        return it->second;
+    }
+
+    const std::vector<unsigned int> &ElementType::variable_numbers(const fem::SystemLayout &system) const
     {
         std::lock_guard<std::mutex> lock(variable_numbers_mutex_);
-        auto it = variable_numbers_.find(system.number());
+        auto it = variable_numbers_.find(&system);
         if (it == variable_numbers_.end())
         {
-            std::vector<unsigned int> numbers(spec_->fields.size(), libMesh::invalid_uint);
+            std::vector<unsigned int> numbers(spec_->fields.size(), la::invalid_uint);
             for (std::size_t index = 0; index < spec_->fields.size(); ++index)
             {
                 const std::string label(registry::info(spec_->fields[index].variable).label);
-                if (system.has_variable(label))
-                    numbers[index] = system.variable_number(label);
+                const int number = system.variable_number(label);
+                if (number >= 0)
+                    numbers[index] = static_cast<unsigned int>(number);
             }
-            it = variable_numbers_.emplace(system.number(), std::move(numbers)).first;
+            it = variable_numbers_.emplace(&system, std::move(numbers)).first;
         }
         return it->second;
     }
 
-    ElementType::FieldIndices ElementType::element_indices(const libMesh::System &system,
-                                                           const libMesh::Elem &elem,
+    ElementType::FieldIndices ElementType::element_indices(const fem::SystemLayout &system,
+                                                           const MeshElement &elem,
                                                            FieldKind kind,
                                                            registry::Domain domain) const
     {
@@ -311,10 +423,7 @@ namespace pytec3d
         thread_local std::vector<unsigned int> offset;
         offset.assign(n_vars + 1, 0);
         for (unsigned int v = 0; v < n_vars; ++v)
-        {
-            const bool active_here = system.variable(v).active_on_subdomain(elem.subdomain_id());
-            offset[v + 1] = offset[v] + (active_here ? libMesh::FEInterface::n_dofs(system.variable_type(v), &elem) : 0);
-        }
+            offset[v + 1] = offset[v] + system.n_element_dofs(v, elem.index);
 
         FieldIndices out;
         out.n_dofs = offset[n_vars];
@@ -328,8 +437,8 @@ namespace pytec3d
             if (field.kind != kind || !active(field, domain))
                 continue;
             const unsigned int var = numbers[index];
-            if (var == libMesh::invalid_uint)
-                fail("the variable of '" + std::string(registry::name(field.id)) + "' is not in system '" + system.name() + "'.");
+            if (var == la::invalid_uint)
+                fail("the variable of '" + std::string(registry::name(field.id)) + "' is not in the system.");
 
             FieldRange &range = out.field[index];
             range.start = offset[var];
@@ -339,7 +448,7 @@ namespace pytec3d
 
         if (covered != out.n_dofs)
             fail("the fields active in the domain cover " + std::to_string(covered) + " of " + std::to_string(out.n_dofs) +
-                 " element DOFs of system '" + system.name() + "'.");
+                 " element DOFs of the system.");
         return out;
     }
 } // namespace pytec3d

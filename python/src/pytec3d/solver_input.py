@@ -166,7 +166,7 @@ def vertex_averages(mesh_arrays: dict[str, np.ndarray], cells: np.ndarray) -> np
         rows = np.flatnonzero(vertices == n_vertices)
         first = offsets[cells[rows]]
         total = points[connectivity[first]].copy()
-        for corner in range(1, n_vertices):  # summed in node order, as libMesh does
+        for corner in range(1, n_vertices):  # summed in node order
             total += points[connectivity[first + corner]]
         centres[rows] = total / n_vertices
     return centres

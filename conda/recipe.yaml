@@ -2,8 +2,8 @@
 #
 #   pytec3d-element-library  noarch: python  the JSON element library (element_library/), shared by the two below
 #   pytec3d-base     noarch: python   the Python API (python/), the pip distribution pytec3d
-#   pytec3d-libmesh  linux-64         the patched libMesh the solver links (solver/libmesh/build_libmesh.sh): libMesh
-#                                     master, or LIBMESH_REF of the environment (the CI resolves it to one commit)
+#   pytec3d-mfem     linux-64         the MFEM the solver links (solver/mfem/build_mfem.sh): the pinned release, or
+#                                     MFEM_REF of the environment; parallel (hypre, METIS of conda-forge)
 #   pytec3d-solver   linux-64, win-64 the C++ solver and its module (solver/), for Python 3.12 (conda/variants.yaml)
 #   pytec3d          noarch: generic  both: conda install pytec3d
 #
@@ -12,7 +12,7 @@
 # conda install pytec3d-base installs the API alone (mpi4py with any MPI); conda install pytec3d-solver the solver alone.
 #
 # Linux: rattler-build build -r conda/recipe.yaml -c conda-forge   (variants: conda/variants.yaml)
-# Windows: the solver is compiled in MSYS2 (conda/build_windows.sh, PETSc and libMesh as static libraries) and staged in
+# Windows: the solver is compiled in MSYS2 (conda/build_windows.sh, PETSc, hypre and MFEM as static libraries) and staged in
 # PYTEC3D_WINDOWS_STAGE/py<XY>/pytec3d_solver; this recipe packages it (the noarch packages are built on Linux).
 schema_version: 1
 
@@ -99,50 +99,41 @@ outputs:
       license_file: LICENSE
       homepage: https://github.com/AlbertoBittes/pyTEC3D
 
-  # --- libMesh, patched ---------------------------------------------------------------------------------------------
+  # --- MFEM ---------------------------------------------------------------------------------------------------------
   - package:
-      name: pytec3d-libmesh
+      name: pytec3d-mfem
     build:
       skip: win
-      # The libMesh commit in the build string: packages built from different libMesh commits are distinct.
-      string: h${{ hash }}_lm${{ env.get("LIBMESH_REF", default="master")[:8] }}_${{ build_number }}
+      # The MFEM release in the build string: packages built from different MFEM refs are distinct.
+      string: h${{ hash }}_mfem${{ env.get("MFEM_REF", default="v4.9") }}_${{ build_number }}
       script:
-        file: build_libmesh.sh
+        file: build_mfem.sh
         env:
-          LIBMESH_REF: ${{ env.get("LIBMESH_REF", default="master") }}
+          MFEM_REF: ${{ env.get("MFEM_REF", default="v4.9") }}
     requirements:
       build:
         - ${{ compiler('c') }}
         - ${{ compiler('cxx') }}
-        - ${{ compiler('fortran') }}
         - ${{ stdlib('c') }}
+        - cmake >=3.21
         - make
-        - pkg-config
         - git
-        # Runs the patch scripts only: a fixed version, so that libMesh is built once, not per Python variant.
-        - python ${{ python_min }}.*
       host:
         - openmpi
-        - petsc ${{ petsc_version }}.* real_*
+        - hypre
         - metis
-        - parmetis
-        - zlib
-        # Link against the BLAS / LAPACK interfaces (libblas.so.3, liblapack.so.3), not OpenBLAS itself: the
-        # implementation is chosen at install time, as for the conda-forge PETSc.
-        - libblas * *netlib
-        - liblapack * *netlib
       run_exports:
-        - ${{ pin_subpackage('pytec3d-libmesh', exact=True) }}
+        - ${{ pin_subpackage('pytec3d-mfem', exact=True) }}
     tests:
       - script:
-          - test -f $PREFIX/lib/libmesh_opt.so
-          - test -f $PREFIX/lib/libtimpi_opt.so
-          - cat $PREFIX/share/pytec3d/libmesh-commit
+          - test -f $PREFIX/lib/libmfem.so
+          - test -f $PREFIX/lib/cmake/mfem/MFEMConfig.cmake
+          - cat $PREFIX/share/pytec3d/mfem-commit
     about:
-      summary: libMesh (development branch, Nedelec prism / pyramid and quadratic pyramid patches) for the pyTEC3D solver
-      description: The libMesh commit is in share/pytec3d/libmesh-commit.
-      license: LGPL-2.1-or-later
-      homepage: https://libmesh.github.io
+      summary: MFEM (parallel, hypre and METIS) for the pyTEC3D solver
+      description: The MFEM commit is in share/pytec3d/mfem-commit.
+      license: BSD-3-Clause
+      homepage: https://mfem.org
 
   # --- The solver -----------------------------------------------------------------------------------------------------
   - package:
@@ -175,7 +166,9 @@ outputs:
             - pybind11
             - openmpi
             - petsc ${{ petsc_version }}.* real_*
-            - ${{ pin_subpackage('pytec3d-libmesh', exact=True) }}
+            - hypre
+            - metis
+            - ${{ pin_subpackage('pytec3d-mfem', exact=True) }}
             - spdlog
             - fmt
             - nlohmann_json
@@ -186,7 +179,7 @@ outputs:
         - numpy
         - if: win
           then:
-            # MS-MPI runtime (msmpi.dll, mpiexec). PETSc, libMesh and the GCC runtime are linked statically, the DLLs of
+            # MS-MPI runtime (msmpi.dll, mpiexec). PETSc, hypre, MFEM and the GCC runtime are linked statically, the DLLs of
             # MSYS2 the module needs (MUMPS, ScaLAPACK, OpenBLAS, Fortran runtime...) are shipped next to it.
             - msmpi
       run_constraints:
@@ -200,7 +193,7 @@ outputs:
       - script:
           - python -c "import pytec3d_solver.pytec3d_solver as m; assert m.INTERFACE_VERSION == 3, m.INTERFACE_VERSION; print(sorted(m.registries()['element_types']))"
     about:
-      summary: pyTEC3D C++ solver (libMesh, PETSc / MUMPS, MPI) and its Python module pytec3d_solver
+      summary: pyTEC3D C++ solver (MFEM, hypre, PETSc / MUMPS, MPI) and its Python module pytec3d_solver
       license: GPL-3.0-or-later
       license_file: LICENSE
       homepage: https://github.com/AlbertoBittes/pyTEC3D

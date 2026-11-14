@@ -29,7 +29,7 @@ Three independent distributions, built from this repository:
 
 - `solver/`: the C++ solver, its own project (distribution `pytec3d-solver`, `solver/pyproject.toml`): a core library
   that depends neither on Python nor on VTK (it works on views of the caller's arrays, `solver/include/model_input.h`),
-  its pybind11 module `pytec3d_solver.pytec3d_solver`, the libMesh build it links (`solver/libmesh/`) and a C++ example.
+  its pybind11 module `pytec3d_solver.pytec3d_solver`, the MFEM build it links (`solver/mfem/`) and a C++ example.
   See `docs/solver_interface.rst`.
 - `element_library/`: the JSON element library (distribution `pytec3d-element-library`), shared by the API, which reads
   it, and the solver, which compiles it into its module.
@@ -37,7 +37,7 @@ Three independent distributions, built from this repository:
 And around them:
 
 - `conda/`: the conda packages (`recipe.yaml`, rattler-build): `pytec3d` = `pytec3d-base` (the API) + `pytec3d-solver`
-  (+ `pytec3d-element-library`, `pytec3d-libmesh`), with the build scripts of the solver (`build_windows.sh`: the MSYS2
+  (+ `pytec3d-element-library`, `pytec3d-mfem`), with the build scripts of the solver (`build_windows.sh`: the MSYS2
   build of the Windows solver); `.github/workflows/conda.yml` builds them for Linux and Windows.
 - `examples/`: commented example analyses (2D and 3D coils, an electromagnet, ITER equilibria and vertical
   displacements in 2D and 3D, the scalar-potential formulations: an iron frame, a ring with a cut, a fixed-T coil, a

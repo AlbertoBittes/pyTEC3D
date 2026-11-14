@@ -29,7 +29,7 @@ A load is an array value, read at every solve. Loads can change freely between s
      - midside nodes
      - ``AVA3D_edge``, ``AVA3D_edge_timint``
      - Load of the edge DOF of A (the circulation of A along the edge), on the midside point of the edge, in the
-       libMesh orientation of the edge (from its lexicographically smaller end point to the larger one).
+       orientation of the edge DOF (from its lexicographically smaller end point to the larger one).
    * - ``VLTG``
      - midside nodes
      - ``TPHI3D_edge``, ``TPHI2D_edge`` (``SOLID_CONDUCTOR``, ``CUT_LAYER``)

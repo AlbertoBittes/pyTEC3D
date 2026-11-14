@@ -68,6 +68,9 @@ Time integration and nonlinear solution
 Linear solvers and software
 ---------------------------
 
+.. [MFEM] R. Anderson et al., "MFEM: A modular finite element methods library", Computers & Mathematics with
+   Applications 81, 42-74 (2021); https://mfem.org/.
+
 .. [Kirk2006] B. S. Kirk, J. W. Peterson, R. H. Stogner, G. F. Carey, "libMesh: a C++ library for parallel adaptive
    mesh refinement/coarsening simulations", Engineering with Computers 22(3-4), 237-254 (2006);
    https://libmesh.github.io/.

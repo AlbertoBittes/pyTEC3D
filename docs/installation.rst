@@ -6,7 +6,7 @@ pyTEC3D has three parts, independent distributions built from the same repositor
 * the **Python API** ``pytec3d`` (``python/``, ``python/pyproject.toml``): model preparation, analysis driver, plasma
   algorithm, post-processing helpers. Pure Python: it installs anywhere, with ``numpy`` and ``vtk``.
 * the **C++ solver** ``pytec3d-solver`` (``solver/``, ``solver/pyproject.toml``), the module
-  ``pytec3d_solver.pytec3d_solver``: a solver core in C++ linked against `libMesh <https://libmesh.github.io/>`_,
+  ``pytec3d_solver.pytec3d_solver``: a solver core in C++ linked against `MFEM <https://mfem.org/>`_,
   `PETSc <https://petsc.org/>`_, `MUMPS <https://mumps-solver.org/>`_ and MPI, with a `pybind11
   <https://pybind11.readthedocs.io/>`_ binding. It does not use VTK nor the Python package: it receives NumPy views of
   the arrays of the mesh (:doc:`solver_interface`).
@@ -46,13 +46,13 @@ The simplest installation, on Linux (x86_64) and Windows (x86_64): the conda pac
    * - ``pytec3d-solver``
      - linux-64, win-64
      - The solver, for Python 3.12 (the Python of ParaView). Linux: linked against the PETSc, MUMPS and Open MPI of
-       conda-forge and ``pytec3d-libmesh``. Windows: built in MSYS2 (``conda/build_windows.sh``), PETSc and libMesh
+       conda-forge and ``pytec3d-mfem``. Windows: built in MSYS2 (``conda/build_windows.sh``), PETSc, hypre and MFEM
        linked statically into the module, which is shipped with the DLLs of MUMPS, ScaLAPACK, OpenBLAS and the
        Fortran runtime of MSYS2; MS-MPI itself is the conda package ``msmpi``.
-   * - ``pytec3d-libmesh``
+   * - ``pytec3d-mfem``
      - linux-64
-     - The patched libMesh the solver links: the libMesh development branch at the time of the build
-       (``solver/libmesh/build_libmesh.sh``; the commit is in ``share/pytec3d/libmesh-commit``).
+     - The MFEM the solver links, parallel with the hypre and METIS of conda-forge: the release pinned in
+       ``solver/mfem/build_mfem.sh`` (the commit is in ``share/pytec3d/mfem-commit``).
 
 **MPI.** The solver depends on the MPI it is linked with (Open MPI on Linux, MS-MPI on Windows), and ``mpi4py``, a
 dependency of ``pytec3d-base``, has a conda build per MPI: in an environment with the solver, conda always installs the
@@ -105,14 +105,14 @@ pyTEC3D is only built as packages: the solver is never compiled into an environm
 
      pip install --no-deps -e ./element_library -e ./python
 
-* **The packages**, solver included (``conda/recipe.yaml``; the first build compiles libMesh, 30 to 60 minutes):
+* **The packages**, solver included (``conda/recipe.yaml``; the first build compiles MFEM, about 10 minutes):
 
   .. code-block:: bash
 
      rattler-build build -r conda/recipe.yaml -c conda-forge                 # into output/
      conda install -c ./output -c conda-forge pytec3d-solver                 # the solver into this environment
 
-  ``LIBMESH_REF=<branch, tag or commit>`` builds another libMesh than ``master``. After a change of the solver
+  ``MFEM_REF=<tag, branch or commit>`` builds another MFEM than the pinned release. After a change of the solver
   (``solver/``) or of the element library, build the packages again: the element library is compiled into the
   solver. The C++ interface of the solver is described in :doc:`solver_interface`; its C++ example
   (``solver/examples``) is built with ``-DPYTEC3D_BUILD_CPP_EXAMPLES=ON`` when the solver is built with CMake.
@@ -149,7 +149,7 @@ The solver is MPI-parallel; the script is the same in serial and in parallel:
 
    mpiexec -n 4 python macro.py
 
-Every rank runs the script; the mesh is distributed by libMesh when the model is loaded, and only rank 0 writes the
+Every rank runs the script; the mesh is partitioned (METIS) and distributed by MFEM when the model is loaded, and only rank 0 writes the
 output files and, by default, prints (``Solver(root_only_output=True)``). Threads can be added per MPI process with
 ``Solver(num_threads=n)``. See :doc:`user_manual/solver_settings` for the solver options of large models, and the
 `Open MPI documentation of mpirun <https://docs.open-mpi.org/en/main/man-openmpi/man1/mpirun.1.html>`_ (Linux) or of

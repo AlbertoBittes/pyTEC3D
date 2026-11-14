@@ -18,32 +18,32 @@
  */
 #pragma once
 
+#include "la.h"
 #include <cstddef>
 #include <string>
 #include <vector>
 
-#include <libmesh/libmesh_common.h>
 
 /** @brief The step the caller asks for: end time and time scheme parameters (the Python time_step dict). */
 struct TimeStepInput
 {
-    libMesh::Real time = 0.0;
-    libMesh::Real theta = 1.0; ///< Theta method (first order).
-    libMesh::Real beta = 0.25; ///< Newmark beta (second order).
-    libMesh::Real gamma = 0.5; ///< Newmark gamma (second order).
+    pytec3d::la::Real time = 0.0;
+    pytec3d::la::Real theta = 1.0; ///< Theta method (first order).
+    pytec3d::la::Real beta = 0.25; ///< Newmark beta (second order).
+    pytec3d::la::Real gamma = 0.5; ///< Newmark gamma (second order).
     bool transient_effects = false;
 };
 
 /** @brief The time-step state of the equation systems. */
 struct TimeStep
 {
-    libMesh::Real time = 0.0;
-    libMesh::Real theta = 1.0;  ///< Theta method (first order).
-    libMesh::Real beta = 0.25;  ///< Newmark beta (second order).
-    libMesh::Real gamma = 0.5;  ///< Newmark gamma (second order).
+    pytec3d::la::Real time = 0.0;
+    pytec3d::la::Real theta = 1.0;  ///< Theta method (first order).
+    pytec3d::la::Real beta = 0.25;  ///< Newmark beta (second order).
+    pytec3d::la::Real gamma = 0.5;  ///< Newmark gamma (second order).
     bool transient_effects = false;
     unsigned int time_step_idx = 0;
-    libMesh::Real dt = 0.0;
+    pytec3d::la::Real dt = 0.0;
     bool updated = true;
 };
 
@@ -66,10 +66,10 @@ struct FactorizationReport
 /** @brief One Newton iteration: the residual at the iterate and the step that led to it. */
 struct NewtonIteration
 {
-    libMesh::Real residual = 0.0;      ///< l2 norm of the residual at the iterate.
-    libMesh::Real step = -1.0;         ///< l2 norm of the step to the iterate; -1 for the initial guess.
-    libMesh::Real relative_step = -1.0;
-    libMesh::Real step_length = -1.0;  ///< Step taken / full Newton step (1 without line search); -1 if unknown.
+    pytec3d::la::Real residual = 0.0;      ///< l2 norm of the residual at the iterate.
+    pytec3d::la::Real step = -1.0;         ///< l2 norm of the step to the iterate; -1 for the initial guess.
+    pytec3d::la::Real relative_step = -1.0;
+    pytec3d::la::Real step_length = -1.0;  ///< Step taken / full Newton step (1 without line search); -1 if unknown.
 };
 
 /** @brief The largest input of a nonlinear law (e.g. |B| of a B-H curve) on the elements of one id. */
@@ -79,15 +79,15 @@ struct LawRange
     std::string input;
     unsigned int id = 0;            ///< MATERIAL, CONSTANT or TYPE id, as the source of the law says.
     std::string source;             ///< "MATERIAL", "CONSTANT" or "TYPE".
-    libMesh::Real max_input = 0.0;  ///< Largest element mean of |input|.
-    libMesh::Real curve_max = 0.0;  ///< Largest x of the curve of the law (0 without curve).
+    pytec3d::la::Real max_input = 0.0;  ///< Largest element mean of |input|.
+    pytec3d::la::Real curve_max = 0.0;  ///< Largest x of the curve of the law (0 without curve).
     bool extrapolated = false;      ///< max_input is beyond the curve.
 };
 
 struct StepReport
 {
-    libMesh::Real time = 0.0;
-    libMesh::Real dt = 0.0;
+    pytec3d::la::Real time = 0.0;
+    pytec3d::la::Real dt = 0.0;
     unsigned int index = 0;
     bool transient = false;
     bool advanced = true;                   ///< A new time, or the same time solved again.
@@ -98,13 +98,13 @@ struct StepReport
     unsigned int numeric_factorizations = 0; ///< Numeric only, on the analysis of a previous factorization.
     bool nonlinear = false;
     unsigned int linear_iterations = 0;     ///< Of the linear solve, or of all the Newton iterations.
-    libMesh::Real linear_residual = 0.0;
+    pytec3d::la::Real linear_residual = 0.0;
     std::string linear_reason;
     std::size_t unconstrained_dofs = 0;     ///< Unknowns of the reduced system (all ranks).
     std::size_t total_dofs = 0;
     unsigned int newton_iterations = 0;
     std::string newton_result;
-    libMesh::Real true_residual = -1.0;     ///< ||b - A x|| / ||b|| of the (reduced) linear system; -1 if not computed.
+    pytec3d::la::Real true_residual = -1.0;     ///< ||b - A x|| / ||b|| of the (reduced) linear system; -1 if not computed.
     FactorizationReport factorization;
     std::vector<NewtonIteration> newton_history;
     std::vector<LawRange> law_ranges;
@@ -118,8 +118,8 @@ struct StepReport
 /** @brief The coefficients of v and a in u and in the state at the start of the step (see the file comment). */
 struct TimeScheme
 {
-    libMesh::Real c_v = 0.0, hu_v = 0.0, hv_v = 0.0, ha_v = 0.0;
-    libMesh::Real c_a = 0.0, hu_a = 0.0, hv_a = 0.0, ha_a = 0.0;
+    pytec3d::la::Real c_v = 0.0, hu_v = 0.0, hv_v = 0.0, ha_v = 0.0;
+    pytec3d::la::Real c_a = 0.0, hu_a = 0.0, hv_a = 0.0, ha_a = 0.0;
 
     /** @brief True when the step is not static: C and M enter the system. */
     bool transient() const { return c_v != 0.0 || c_a != 0.0; }

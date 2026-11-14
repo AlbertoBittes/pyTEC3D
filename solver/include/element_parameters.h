@@ -15,11 +15,9 @@
  */
 #pragma once
 
+#include "la.h"
 #include <vector>
 
-#include <libmesh/libmesh_common.h>
-#include <libmesh/tensor_value.h>
-#include <libmesh/vector_value.h>
 
 #include <cstddef>
 
@@ -40,7 +38,7 @@ namespace pytec3d
             unsigned int material_id = 0;
             unsigned int constants_id = 0;
             registry::Domain domain = registry::Domain::COUNT;
-            libMesh::TensorValue<libMesh::Real> rotation{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}; ///< Element axes to global axes.
+            pytec3d::la::TensorValue<pytec3d::la::Real> rotation{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}; ///< Element axes to global axes.
             const ModelArrays *arrays = nullptr; ///< The me. parameters are its cell fields.
             std::size_t element_id = 0;
         };
@@ -51,9 +49,9 @@ namespace pytec3d
         const ParameterValue &symbol(registry::ParameterId id);
 
         // What registry::evaluate_expression() reads.
-        const libMesh::Real &get_scalar(registry::ParameterId id) { return symbol(id).scalar(); }
-        const libMesh::RealVectorValue &get_vector(registry::ParameterId id) { return symbol(id).vector(); }
-        const libMesh::RealTensorValue &get_tensor(registry::ParameterId id) { return symbol(id).tensor(); }
+        const pytec3d::la::Real &get_scalar(registry::ParameterId id) { return symbol(id).scalar(); }
+        const pytec3d::la::RealVectorValue &get_vector(registry::ParameterId id) { return symbol(id).vector(); }
+        const pytec3d::la::RealTensorValue &get_tensor(registry::ParameterId id) { return symbol(id).tensor(); }
         unsigned int dimension() const { return type_.dimension(); }
         bool axisymmetric() const { return type_.options().axisymmetric; }
 

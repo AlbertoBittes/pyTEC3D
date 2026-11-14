@@ -1,4 +1,4 @@
-"""pyTEC3D: low-frequency electromagnetic finite elements, a Python model driving a C++ (libMesh / PETSc) solver.
+"""pyTEC3D: low-frequency electromagnetic finite elements, a Python model driving a C++ (MFEM / PETSc) solver.
 
 Main objects::
 

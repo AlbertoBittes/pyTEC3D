@@ -1,10 +1,6 @@
 /**
  * @file array_io.h
- * @brief The libMesh mesh from the mesh view of the caller, the field arrays the model needs, and the solution
- * written into them.
- *
- * The mesh, the ids and the fields are the arrays of model_input.h: libMesh node i is point i, element i is cell i
- * (subdomain: its TYPE), and the field F of the solution systems is written into the point or cell field F.
+ * @brief The field arrays the model needs (model_input.h): the fields of its element types and their parameters.
  */
 #pragma once
 
@@ -14,12 +10,6 @@
 #include "model_input.h"
 
 class ModelElementTypes;
-
-namespace libMesh
-{
-    class EquationSystems;
-    class MeshBase;
-}
 
 namespace pytec3d
 {
@@ -46,22 +36,4 @@ namespace pytec3d
     void check_field_arrays(const ModelArrays &arrays, const std::vector<FieldArrayRequirement> &required,
                             std::size_t n_points, std::size_t n_cells, bool warn_unused);
 
-    /**
-     * @brief Fills @p mesh (cleared first) with the points and cells of @p view; each element's subdomain is its
-     * value in @p type_ids (the TYPE cell array). Every rank reads the whole mesh.
-     */
-    void import_mesh(libMesh::MeshBase &mesh, const MeshView &view, const IdArray &type_ids);
-
-    /**
-     * @brief Output fields the solution system @p system_name writes and @p arrays does not have (or with too few
-     * components), as "name (point)" / "name (cell)".
-     */
-    std::vector<std::string> missing_output_arrays(const libMesh::EquationSystems &systems, const std::string &system_name,
-                                                   const ModelArrays &arrays);
-
-    /**
-     * @brief Writes the fields of the solution system @p system_name into the fields of @p arrays: the nodal systems
-     * into the point fields, the element system into the cell fields. Collective; every rank writes every value.
-     */
-    void write_system_to_arrays(libMesh::EquationSystems &systems, const std::string &system_name, const ModelArrays &arrays);
 } // namespace pytec3d

@@ -114,7 +114,7 @@ Files
    * **Run**: date, command line, working directory, host, platform, Python / numpy / pytec3d versions, and the
      SHA-256 of the input files (mesh, model data, script);
    * **Solver banner**: version, build mode and stamp, git commit (``-dirty`` with uncommitted changes), compiler,
-     libMesh and PETSc versions, MPI ranks, threads;
+     MFEM and PETSc versions, MPI ranks, threads;
    * **Mesh** and **Mesh quality** (per cell shape: largest edge ratio, smallest and largest angle, smallest scaled
      Jacobian with the worst cell, distorted and degenerate cells, cells reoriented on import);
    * **Model**: the analysis (2D planar, 2D axisymmetric, 3D), units, the element types of each TYPE id (domain, order,
@@ -127,16 +127,12 @@ Files
      the nonlinear laws, the wall time of each phase;
    * **Run summary** at ``close()``: one row per step and the totals (wall and CPU time, warnings, errors).
 
-   The raw output of PETSc and libMesh (``-ksp_monitor``, ``-log_view``, MUMPS, the Newton lines) goes to the standard
+   The raw output of PETSc (``-ksp_monitor``, ``-log_view``, MUMPS, the Newton lines) goes to the standard
    output only.
 
 ``output/<name>_steps.csv``
    One row per step: index, time, nonlinear, Newton and linear iterations, convergence, true residual, largest law
    input, wall time, output file.
-
-``emat/``
-   The element matrices of the session (binary, one file per rank), reused between steps. They can be deleted after
-   the run.
 
 Post-processing in ParaView
 ---------------------------

@@ -3,13 +3,13 @@
  * @brief The compiled form of an element type of element_types.json: plain tables of enums and indices.
  *
  * generate_registries.py reads element_types.json at build time, checks it and writes one ElementTypeSpec
- * per element type (formulations.h). Nothing is parsed at run time: ElementType instantiates the libMesh
- * objects a spec asks for, ElementEvaluator runs its evaluations. Adding a formulation means editing the
+ * per element type (formulations.h). Nothing is parsed at run time: ElementType instantiates the finite
+ * elements a spec asks for, ElementEvaluator runs its evaluations. Adding a formulation means editing the
  * JSON and rebuilding the module.
  *
  * An element type is made of
  *  - Fields: DOF unknowns, nodal fields (L2 projections) and element fields (quadrature averages).
- *  - FEs: one libMesh FE per distinct family, after merging the families with the same shape functions
+ *  - FEs: one finite element per distinct family, after merging the families with the same shape functions
  *    (LAGRANGE and L2_LAGRANGE, LAGRANGE_VEC and L2_LAGRANGE_VEC). Element fields have none.
  *  - Nablas: an operator (identity, grad, curl, div) on one FE; the shape functions it gives at each
  *    quadrature point are Real, RealVectorValue or RealTensorValue (output). Duplicates are merged.
@@ -24,12 +24,11 @@
  */
 #pragma once
 
+#include "la.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
-#include <libmesh/enum_fe_family.h>
-#include <libmesh/libmesh_common.h>
 
 #include "parameter_value.h"
 #include "registries.h"
@@ -51,6 +50,43 @@ namespace pytec3d::formulation
         constexpr bool empty() const { return count == 0; }
         constexpr const T &operator[](std::size_t i) const { return data[i]; }
     };
+
+    /** @brief The finite element family of a field (the names of element_types.json "finite_elements"). */
+    enum class FEFamily : unsigned char
+    {
+        LAGRANGE,        ///< H1 scalar (a single component of a vector field too).
+        LAGRANGE_VEC,    ///< H1 vector, all the components of the element dimension.
+        L2_LAGRANGE,     ///< Discontinuous Lagrange (nodal fields), scalar.
+        L2_LAGRANGE_VEC, ///< Discontinuous Lagrange (nodal fields), vector.
+        NEDELEC_ONE,     ///< H(curl), Nedelec of the first kind.
+        MONOMIAL,        ///< One value per element (element fields), scalar.
+        MONOMIAL_VEC,    ///< One value per element (element fields), vector.
+        INVALID_FE,
+    };
+
+    /** @brief The shape functions of the family are vectors (Nedelec) or vectors built from scalar ones (Lagrange). */
+    constexpr bool is_vector_family(FEFamily family)
+    {
+        return family == FEFamily::LAGRANGE_VEC || family == FEFamily::L2_LAGRANGE_VEC || family == FEFamily::NEDELEC_ONE ||
+               family == FEFamily::MONOMIAL_VEC;
+    }
+
+    /** @brief The name of the family, as in element_types.json. */
+    constexpr const char *family_name(FEFamily family)
+    {
+        switch (family)
+        {
+        case FEFamily::LAGRANGE: return "LAGRANGE";
+        case FEFamily::LAGRANGE_VEC: return "LAGRANGE_VEC";
+        case FEFamily::L2_LAGRANGE: return "L2_LAGRANGE";
+        case FEFamily::L2_LAGRANGE_VEC: return "L2_LAGRANGE_VEC";
+        case FEFamily::NEDELEC_ONE: return "NEDELEC_ONE";
+        case FEFamily::MONOMIAL: return "MONOMIAL";
+        case FEFamily::MONOMIAL_VEC: return "MONOMIAL_VEC";
+        case FEFamily::INVALID_FE: break;
+        }
+        return "INVALID_FE";
+    }
 
     enum class FieldKind : unsigned char
     {
@@ -110,17 +146,17 @@ namespace pytec3d::formulation
         unsigned char n_components;                      ///< Values per point: 1 for a scalar or a single component.
         std::array<unsigned char, 3> components;         ///< Physical components (0=x, 1=y, 2=z) of the values, first n_components.
         signed char fe;                                  ///< Index of its FE; -1 for element fields.
-        libMesh::FEFamily family;                        ///< Family of its libMesh variable.
-        OrderRule order;                                 ///< Of its libMesh variable; element fields are CONSTANT.
-        registry::VariableId variable;                   ///< Its libMesh variable (vector, scalar, or one component).
+        FEFamily family;                        ///< Family of its variable.
+        OrderRule order;                                 ///< Of its variable; element fields are CONSTANT.
+        registry::VariableId variable;                   ///< Its variable (vector, scalar, or one component).
         registry::DomainMask domains;                    ///< Where it exists.
         registry::FieldId nodal_load;                    ///< Point array loading a DOF field on its nodes; COUNT if none.
     };
 
     struct FESpec
     {
-        libMesh::FEFamily family;
-        bool vector; ///< FEVectorBase (RealVectorValue shape functions) or FEBase (Real).
+        FEFamily family;
+        bool vector; ///< Vector (RealVectorValue) shape functions, or scalar (Real) ones.
         OrderRule order;
     };
 
@@ -138,7 +174,7 @@ namespace pytec3d::formulation
         CoefficientKind kind;
         unsigned short index; ///< ParameterId or LawOutputId, by kind.
         ValueType type;
-        libMesh::Real sign;
+        pytec3d::la::Real sign;
     };
 
     /** @brief sum over the quadrature points of test^T * coefficient * trial; times JxW only when there is a test. */

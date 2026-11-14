@@ -4,17 +4,14 @@
  */
 #include "mesh_quality.h"
 
+#include <array>
+#include <cmath>
+
+#include "fe_mesh.h"
+#include "quadrature.h"
+
 #include "logging.h"
 
-#include <libmesh/elem.h>
-#include <libmesh/enum_elem_quality.h>
-#include <libmesh/enum_elem_type.h>
-#include <libmesh/enum_to_string.h>
-#include <libmesh/fe_base.h>
-#include <libmesh/libmesh_exceptions.h>
-#include <libmesh/mesh_base.h>
-#include <libmesh/parallel_implementation.h>
-#include <libmesh/quadrature_gauss.h>
 
 #include <algorithm>
 #include <limits>
@@ -26,86 +23,84 @@ namespace pytec3d
 {
     namespace
     {
-        /** @brief An FE map and quadrature rule per (dimension, order). */
-        class JacobianSampler
+        constexpr std::size_t kTypes = 33; ///< VTK cell type numbers are below this.
+
+        using P = std::array<double, 3>;
+        P minus(const double *a, const double *b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
+        double length(const P &v) { return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
+        double angle(const P &a, const P &b)
         {
-        public:
-            /** @brief min / max of det(J) over the quadrature points of @p elem; 0 or less if degenerate. */
-            libMesh::Real scaled_jacobian(const libMesh::Elem &elem)
-            {
-                Entry &entry = entry_for(elem);
-                try
-                {
-                    entry.fe->reinit(&elem);
-                }
-                catch (const libMesh::DegenerateMap &)
-                {
-                    return 0.0;
-                }
-                const std::vector<libMesh::Real> &JxW = entry.fe->get_JxW();
-                const std::vector<libMesh::Real> &weights = entry.qrule->get_weights();
-                libMesh::Real lowest = std::numeric_limits<libMesh::Real>::max();
-                libMesh::Real highest = -lowest;
-                for (std::size_t q = 0; q < JxW.size(); ++q)
-                {
-                    const libMesh::Real det = JxW[q] / weights[q];
-                    lowest = std::min(lowest, det);
-                    highest = std::max(highest, det);
-                }
-                return highest > 0.0 ? lowest / highest : 0.0;
-            }
-
-        private:
-            struct Entry
-            {
-                std::unique_ptr<libMesh::FEBase> fe;
-                std::unique_ptr<libMesh::QGauss> qrule;
-            };
-
-            Entry &entry_for(const libMesh::Elem &elem)
-            {
-                const auto key = std::make_pair(elem.dim(), static_cast<int>(elem.default_order()));
-                Entry &entry = entries_[key];
-                if (!entry.fe)
-                {
-                    entry.fe = libMesh::FEBase::build(elem.dim(), libMesh::FEType(elem.default_order(), libMesh::LAGRANGE));
-                    entry.qrule = std::make_unique<libMesh::QGauss>(elem.dim(),
-                                                                    static_cast<libMesh::Order>(2 * elem.default_order()));
-                    entry.fe->attach_quadrature_rule(entry.qrule.get());
-                    entry.fe->get_JxW();
-                }
-                return entry;
-            }
-
-            std::map<std::pair<unsigned short, int>, Entry> entries_;
-        };
+            const double c = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (length(a) * length(b));
+            return std::acos(std::max(-1.0, std::min(1.0, c))) * 180.0 / 3.14159265358979323846;
+        }
     } // namespace
 
-    std::vector<ShapeQuality> compute_mesh_quality(const libMesh::MeshBase &mesh)
+    std::vector<ShapeQuality> compute_mesh_quality(const fem::FEMesh &mesh)
     {
-        // Indexed by ElemType, so that the reductions line up on every rank.
-        constexpr std::size_t n_types = libMesh::INVALID_ELEM;
-        const libMesh::Real huge = std::numeric_limits<libMesh::Real>::max();
-        std::vector<libMesh::Real> max_edge_ratio(n_types, 0.0), min_angle(n_types, huge), max_angle(n_types, 0.0),
-            min_scaled(n_types, huge);
-        std::vector<std::size_t> count(n_types, 0), distorted(n_types, 0), degenerate(n_types, 0);
-        std::vector<libMesh::dof_id_type> worst(n_types, 0);
+        // Indexed by VTK cell type, so that the reductions line up on every rank.
+        const double huge = std::numeric_limits<double>::max();
+        std::vector<double> max_edge_ratio(kTypes, 0.0), min_angle(kTypes, huge), max_angle(kTypes, 0.0), min_scaled(kTypes, huge);
+        std::vector<unsigned long long> count(kTypes, 0), distorted(kTypes, 0), degenerate(kTypes, 0);
+        std::vector<long long> worst(kTypes, 0);
 
-        JacobianSampler sampler;
-        for (const libMesh::Elem *elem : mesh.active_local_element_ptr_range())
+        // det(J) at the points of a rule of twice the geometric order, for all the elements at once.
+        const mfem::ParMesh &pmesh = mesh.mesh();
+        const std::vector<int> orders(static_cast<std::size_t>(mesh.n_local_elements()), 2 * mesh.geometric_order());
+        const fem::QuadratureData quadrature(mesh, orders);
+        mfem::Array<int> vertices, edges, orientations;
+        for (int e = 0; e < mesh.n_local_elements(); ++e)
         {
-            const auto t = static_cast<std::size_t>(elem->type());
-            if (elem->dim() == 0 || t >= n_types)
-                continue;
+            const auto t = static_cast<std::size_t>(mesh.cell_type(e));
             ++count[t];
-            // The generic measures of libMesh::Elem, the same for every shape.
-            max_edge_ratio[t] = std::max(max_edge_ratio[t], elem->libMesh::Elem::quality(libMesh::EDGE_LENGTH_RATIO));
-            if (elem->dim() >= 2)
+            // Edge length ratio and corner angles, from the corners.
+            pmesh.GetElementVertices(e, vertices);
+            const mfem::Element *element = pmesh.GetElement(e);
+            const int n_edges = element->GetNEdges();
+            double shortest = huge, longest = 0.0;
+            for (int k = 0; k < n_edges; ++k)
             {
-                min_angle[t] = std::min(min_angle[t], elem->libMesh::Elem::quality(libMesh::MIN_ANGLE));
-                max_angle[t] = std::max(max_angle[t], elem->libMesh::Elem::quality(libMesh::MAX_ANGLE));
+                const int *ev = element->GetEdgeVertices(k);
+                const double l = length(minus(pmesh.GetVertex(vertices[ev[1]]), pmesh.GetVertex(vertices[ev[0]])));
+                shortest = std::min(shortest, l);
+                longest = std::max(longest, l);
             }
-            const libMesh::Real scaled = sampler.scaled_jacobian(*elem);
+            max_edge_ratio[t] = std::max(max_edge_ratio[t], shortest > 0.0 ? longest / shortest : huge);
+            // The angles at the corners of the faces (2D: of the element).
+            const auto corner_angles = [&](const int *face, int n)
+            {
+                for (int k = 0; k < n; ++k)
+                {
+                    const double *v = pmesh.GetVertex(vertices[face[k]]);
+                    const double a = angle(minus(pmesh.GetVertex(vertices[face[(k + 1) % n]]), v),
+                                           minus(pmesh.GetVertex(vertices[face[(k + n - 1) % n]]), v));
+                    min_angle[t] = std::min(min_angle[t], a);
+                    max_angle[t] = std::max(max_angle[t], a);
+                }
+            };
+            if (mesh.dimension() == 2)
+            {
+                std::vector<int> all(static_cast<std::size_t>(vertices.Size()));
+                for (int k = 0; k < vertices.Size(); ++k)
+                    all[static_cast<std::size_t>(k)] = k;
+                corner_angles(all.data(), vertices.Size());
+            }
+            else
+                for (int f = 0; f < element->GetNFaces(); ++f)
+                {
+                    const int *face = element->GetFaceVertices(f);
+                    const int n = element->GetNFaceVertices(f);
+                    corner_angles(face, n);
+                }
+
+            const int nq = quadrature.n_points(e);
+            const double *det = quadrature.det(e);
+            double lowest = huge, highest = -huge;
+            for (int q = 0; q < nq; ++q)
+            {
+                lowest = std::min(lowest, det[q]);
+                highest = std::max(highest, det[q]);
+            }
+            const double scaled = highest > 0.0 ? lowest / highest : 0.0;
             if (scaled <= 0.0)
                 ++degenerate[t];
             else if (scaled < kDistortedScaledJacobian)
@@ -113,39 +108,43 @@ namespace pytec3d
             if (scaled < min_scaled[t])
             {
                 min_scaled[t] = scaled;
-                worst[t] = elem->id();
+                worst[t] = mesh.cell(e);
             }
         }
 
-        const auto &comm = mesh.comm();
-        comm.sum(count);
-        comm.sum(distorted);
-        comm.sum(degenerate);
-        comm.max(max_edge_ratio);
-        comm.min(min_angle);
-        comm.max(max_angle);
+        const MPI_Comm comm = mesh.comm();
+        MPI_Allreduce(MPI_IN_PLACE, count.data(), static_cast<int>(kTypes), MPI_UNSIGNED_LONG_LONG, MPI_SUM, comm);
+        MPI_Allreduce(MPI_IN_PLACE, distorted.data(), static_cast<int>(kTypes), MPI_UNSIGNED_LONG_LONG, MPI_SUM, comm);
+        MPI_Allreduce(MPI_IN_PLACE, degenerate.data(), static_cast<int>(kTypes), MPI_UNSIGNED_LONG_LONG, MPI_SUM, comm);
+        MPI_Allreduce(MPI_IN_PLACE, max_edge_ratio.data(), static_cast<int>(kTypes), MPI_DOUBLE, MPI_MAX, comm);
+        MPI_Allreduce(MPI_IN_PLACE, min_angle.data(), static_cast<int>(kTypes), MPI_DOUBLE, MPI_MIN, comm);
+        MPI_Allreduce(MPI_IN_PLACE, max_angle.data(), static_cast<int>(kTypes), MPI_DOUBLE, MPI_MAX, comm);
 
         std::vector<ShapeQuality> out;
-        for (std::size_t t = 0; t < n_types; ++t)
+        for (std::size_t t = 0; t < kTypes; ++t)
         {
             if (count[t] == 0)
                 continue;
-            libMesh::Real scaled = min_scaled[t];
-            unsigned int rank = 0;
-            comm.minloc(scaled, rank);
-            libMesh::dof_id_type worst_id = worst[t];
-            comm.broadcast(worst_id, rank);
+            // The worst element of all the ranks (the smallest scaled Jacobian, the lowest rank on ties).
+            struct
+            {
+                double value;
+                int rank;
+            } local{min_scaled[t], mesh.rank()}, global{};
+            MPI_Allreduce(&local, &global, 1, MPI_DOUBLE_INT, MPI_MINLOC, comm);
+            long long worst_id = worst[t];
+            MPI_Bcast(&worst_id, 1, MPI_LONG_LONG, global.rank, comm);
 
             ShapeQuality quality;
-            quality.shape = libMesh::Utility::enum_to_string(static_cast<libMesh::ElemType>(t));
-            quality.elements = count[t];
+            quality.shape = fem::cell_type_name(static_cast<int>(t));
+            quality.elements = static_cast<std::size_t>(count[t]);
             quality.max_edge_ratio = max_edge_ratio[t];
             quality.min_angle = min_angle[t] == huge ? 0.0 : min_angle[t];
             quality.max_angle = max_angle[t];
-            quality.min_scaled_jacobian = scaled;
+            quality.min_scaled_jacobian = global.value;
             quality.worst_element = worst_id;
-            quality.distorted = distorted[t];
-            quality.degenerate = degenerate[t];
+            quality.distorted = static_cast<std::size_t>(distorted[t]);
+            quality.degenerate = static_cast<std::size_t>(degenerate[t]);
             out.push_back(std::move(quality));
         }
         return out;

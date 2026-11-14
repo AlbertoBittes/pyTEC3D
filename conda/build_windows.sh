@@ -2,18 +2,18 @@
 # Windows build of the pyTEC3D solver, in an MSYS2 UCRT64 shell (GitHub Actions: .github/workflows/conda.yml).
 #
 # conda-forge has no Windows PETSc, and the PETSc of MSYS2 has no MUMPS. So PETSc is built here, as a static library,
-# against the MUMPS, ScaLAPACK, METIS, ParMETIS and OpenBLAS packages of MSYS2 (MS-MPI builds), and libMesh as a static
-# library against that PETSc. The module of each Python version links them, with the GCC and C++ runtimes statically;
+# against the MUMPS, ScaLAPACK, METIS, ParMETIS and OpenBLAS packages of MSYS2 (MS-MPI builds), with the hypre PETSc
+# downloads and builds (--download-hypre: MSYS2 has none); MFEM as a static library against that hypre and METIS. The module of each Python version links them, with the GCC and C++ runtimes statically;
 # the DLLs of MSYS2 it needs (MUMPS, ScaLAPACK, OpenBLAS, the Fortran runtime, the Fortran interface of MS-MPI...) are
 # copied next to it. msmpi.dll comes from the conda package msmpi, the rest from Windows. The modules are staged for
 # conda/recipe.yaml (install_solver_windows.bat):
 #
 #   $STAGE_DIR/py<XY>/pytec3d_solver/{__init__.py, pytec3d_solver.cp<XY>-win_amd64.pyd, *.dll}
 #
-# Usage: build_windows.sh [petsc|libmesh|solver|all]   (default all; the CI runs them as separate steps, to cache each)
+# Usage: build_windows.sh [petsc|mfem|solver|all]   (default all; the CI runs them as separate steps, to cache each)
 #
 # Environment:
-#   DEPS_DIR    prefix of the PETSc and libMesh builds (cached between runs): $DEPS_DIR/{petsc,libmesh}
+#   DEPS_DIR    prefix of the PETSc (+ hypre) and MFEM builds (cached between runs): $DEPS_DIR/{petsc,mfem}
 #   STAGE_DIR   receives the staged modules
 #   PYTHONS     the python.exe of each conda environment to build for (Windows paths, separated by ';')
 #   CPU_COUNT   parallel jobs (default: all cores)
@@ -22,13 +22,13 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Windows paths (C:/..., C:\...) as POSIX paths of MSYS2 (/c/...), for the shell and the autotools builds.
-DEPS_DIR="$(cygpath -u "${DEPS_DIR:?prefix of the PETSc / libMesh builds}")"
+DEPS_DIR="$(cygpath -u "${DEPS_DIR:?prefix of the PETSc / MFEM builds}")"
 STAGE_DIR="$(cygpath -u "${STAGE_DIR:?stage directory}")"
 PYTHONS="${PYTHONS:?python.exe of each target Python, separated by ;}"
 CPU_COUNT="${CPU_COUNT:-$(nproc)}"
 PETSC_VERSION="${PETSC_VERSION:-3.26.0}"
 PETSC_PREFIX="${DEPS_DIR}/petsc"
-LIBMESH_PREFIX="${DEPS_DIR}/libmesh"
+MFEM_PREFIX="${DEPS_DIR}/mfem"
 MINGW="${MINGW_PREFIX:-/ucrt64}"
 
 [ "${MSYSTEM:-}" = "UCRT64" ] || { echo "ERROR: run in an MSYS2 UCRT64 shell (MSYSTEM=${MSYSTEM:-unset})."; exit 1; }
@@ -46,7 +46,7 @@ if ! command -v mpiexec >/dev/null; then
 fi
 
 STAGE="${1:-all}"
-case "${STAGE}" in petsc|libmesh|solver|all) ;; *) echo "ERROR: unknown stage '${STAGE}'."; exit 1 ;; esac
+case "${STAGE}" in petsc|mfem|solver|all) ;; *) echo "ERROR: unknown stage '${STAGE}'."; exit 1 ;; esac
 want() { [ "${STAGE}" = "all" ] || [ "${STAGE}" = "$1" ]; }
 
 # --- PETSc, static, with the MUMPS of MSYS2 ---------------------------------------------------------------------------
@@ -68,24 +68,19 @@ if want petsc && [ ! -f "${PETSC_PREFIX}/lib/libpetsc.a" ]; then
     --with-scalapack-include="${MINGW}/include" --with-scalapack-lib="${MINGW}/lib/libscalapack.dll.a" \
     --with-metis-include="${MINGW}/include" --with-metis-lib="${MINGW}/lib/libmetis.dll.a" \
     --with-parmetis-include="${MINGW}/include" --with-parmetis-lib="${MINGW}/lib/libparmetis.dll.a" \
+    --download-hypre \
     --with-x=0 --with-ssl=0 \
     || { echo "==> PETSc configure.log (end):"; tail -n 120 configure.log; exit 1; }
   make PETSC_DIR="$(pwd)" all -j"${CPU_COUNT}"
   make PETSC_DIR="$(pwd)" install
 fi
 
-# --- libMesh, static, against that PETSc (and its METIS / ParMETIS) ---------------------------------------------------
-# --allow-multiple-definition: in a static libMesh, an explicit specialization (FE<2, SUBDIVISION>::side_map) and the
-# explicit instantiation of its template are both definitions for the MinGW linker (on ELF the specialization wins);
-# pyTEC3D does not use subdivision elements.
-if want libmesh && [ ! -f "${LIBMESH_PREFIX}/lib/libmesh_opt.a" ]; then
-  echo "==> Building libMesh"
-  LDFLAGS="${LDFLAGS:-} -Wl,--allow-multiple-definition" \
-  CC=mpicc CXX=mpicxx FC=mpifort F77=mpifort \
-  PETSC_DIR="${PETSC_PREFIX}" MPI_DIR="${MINGW}" METIS_DIR=PETSc PARMETIS_DIR=PETSc \
-  PYTHON=/usr/bin/python3 CPU_COUNT="${CPU_COUNT}" \
-  LIBMESH_CONFIGURE_EXTRA="--disable-shared --enable-static" \
-    "${ROOT}/solver/libmesh/build_libmesh.sh" "${DEPS_DIR}/src/libmesh" "${LIBMESH_PREFIX}" opt
+# --- MFEM, static, against the hypre of that PETSc and the METIS of MSYS2 ---------------------------------------------
+if want mfem && [ ! -f "${MFEM_PREFIX}/lib/libmfem.a" ]; then
+  echo "==> Building MFEM"
+  CC=mpicc CXX=mpicxx HYPRE_DIR="${PETSC_PREFIX}" METIS_DIR="${MINGW}" CPU_COUNT="${CPU_COUNT}" \
+  MFEM_CMAKE_EXTRA="-G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_PREFIX_PATH=${MINGW}" \
+    "${ROOT}/solver/mfem/build_mfem.sh" "${DEPS_DIR}/src/mfem" "${MFEM_PREFIX}" opt
 fi
 
 want solver || exit 0
@@ -135,7 +130,7 @@ for python in "${pythons[@]}"; do
     -DMPI_CXX_SKIP_MPICXX=ON -DMPI_CXX_INCLUDE_PATH="${MINGW}/include" \
     -DMPI_CXX_LIB_NAMES=msmpi -DMPI_msmpi_LIBRARY="${MSMPI_LIBRARY}" \
     -DCMAKE_PREFIX_PATH="${MINGW}" \
-    -DLIBMESH_DIR="$(cygpath -m "${LIBMESH_PREFIX}")" -DLIBMESH_METHOD=opt \
+    -DMFEM_DIR="$(cygpath -m "${MFEM_PREFIX}")" \
     -DPYTEC3D_EXTRA_LIBS=z \
     -DPython3_EXECUTABLE="$(cygpath -m "${python}")" \
     -Dpybind11_DIR="$(cygpath -m "${pybind11_dir}")"

@@ -1,9 +1,10 @@
 /**
  * @file solver_configuration.h
- * @brief PETSc linear-solver configuration for the pyTEC3D DOF system.
+ * @brief The solver settings of the DOF system and their application to the PETSc linear solver (KSP).
  *
- * Derives from libMesh::SolverConfiguration and applies the solver settings (KSP type, preconditioner,
- * tolerances) to the PETSc KSP object before each solve. Direct factorisations (LU, Cholesky) use MUMPS.
+ * The KSP type, preconditioner and tolerances of the settings are set on the KSP before each solve, after
+ * KSPSetFromOptions(), so that they win over the options database; the PETSc options of the settings are put in the
+ * options database. Direct factorisations (LU, Cholesky) use MUMPS unless the settings say otherwise.
  */
 #pragma once
 
@@ -11,8 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include <libmesh/linear_solver.h>
-#include <libmesh/solver_configuration.h>
+#include <petscksp.h>
 
 /** @brief Settings of the PETSc linear solver (KSP), used alone or inside each Newton iteration. */
 struct LinearSolverSettings
@@ -36,7 +36,7 @@ struct LinearSolverSettings
     bool operator!=(const LinearSolverSettings &other) const { return !(*this == other); }
 };
 
-/** @brief Settings of the libMesh Newton solver of the nonlinear (law) systems. */
+/** @brief Settings of the Newton solver of the nonlinear (law) systems (newton_solver.h). */
 struct NewtonSettings
 {
     unsigned int max_iterations = 50;
@@ -68,16 +68,13 @@ struct SolverSettings
 };
 
 /**
- * @brief Applies PETSc KSP/PC options to the linear solver before each solve.
+ * @brief Applies the settings to a KSP before each solve.
  *
  * Prints the configuration table to the log at the first solve and whenever the settings change.
  */
-class PetscSolverConfiguration : public libMesh::SolverConfiguration
+class PetscSolverConfiguration
 {
 public:
-    /** @param nonlinear The linear solver of the Newton iterations (for the report of the settings). */
-    PetscSolverConfiguration(libMesh::LinearSolver<libMesh::Number> *linear_solver, bool nonlinear = false);
-
     /**
      * @brief The settings of the next solves.
      *
@@ -86,15 +83,13 @@ public:
      * @return True when the linear solver settings or the PETSc options differ from those of the previous call (not on
      * the first call): a factorization of the previous settings must not be reused.
      */
-    bool set_settings(const SolverSettings &settings);
-
-    /** @brief Applies KSP and PC settings to the attached linear solver. */
-    void configure_solver() override;
+    bool set_settings(const SolverSettings &settings, bool nonlinear);
+    /** @brief Applies the tolerances, the options database and the KSP and PC types to @p ksp. */
+    void configure(KSP ksp, double rtol);
 
 private:
-    libMesh::LinearSolver<libMesh::Number> *linear_solver_ = nullptr; ///< Non-owning.
     SolverSettings settings_;
     bool has_settings_ = false;
-    bool report_pending_ = true; ///< Print the configuration table at the next configure_solver().
+    bool report_pending_ = true; ///< Print the configuration table at the next configure().
     bool nonlinear_ = false;
 };

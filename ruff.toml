@@ -2,7 +2,7 @@
 line-length = 120
 target-version = "py312"
 src = ["python/src", "element_library"]
-extend-exclude = ["libmesh", "solver/libmesh", ".deps", "build", "output", "docs", "pyTEC3D_APDL_benchmarks"]
+extend-exclude = ["libmesh", ".deps", "build", "output", "docs", "pyTEC3D_APDL_benchmarks"]
 
 [lint]
 # pycodestyle, pyflakes, isort, pyupgrade, bugbear, simplify

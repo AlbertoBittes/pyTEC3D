@@ -18,7 +18,7 @@ The two parts are separate distributions:
      - Pure Python (``pip install .``, needs ``numpy`` and ``vtk`` only): the model, the selections, the meshes, the
        analysis driver, the plasma algorithm. It imports the solver only when a model is loaded.
    * - ``pytec3d-solver``
-     - The compiled module ``pytec3d_solver.pytec3d_solver``, built by the conda recipe against libMesh, PETSc and MPI
+     - The compiled module ``pytec3d_solver.pytec3d_solver``, built by the conda recipe against MFEM, hypre, PETSc and MPI
        (:doc:`installation`). It holds the solver core, a C++ library (``libpytec3d_core.a``) that depends neither on
        Python nor on VTK, and the `pybind11 <https://pybind11.readthedocs.io/>`_ binding that turns NumPy arrays into
        views and dicts into the C++ settings.
@@ -94,7 +94,7 @@ with float32 points, 32-bit cells or ids of another integer type is converted on
 **Lifetime.** The solver keeps the views of the model arrays, not the arrays: each must stay alive and keep its
 memory from the load to the end of the session, or until it is replaced with ``set_arrays``; the Python binding
 keeps a reference to each. The mesh and the rotations are only read by ``load_model``, which copies what it needs
-into the libMesh mesh and the rotation caches of the solver: no reference to them is kept, so the rotation arrays
+into the MFEM mesh and the rotation caches of the solver: no reference to them is kept, so the rotation arrays
 computed in Python are freed as soon as the load returns. :meth:`pytec3d.Solver.solve` hands the session views of the
 current arrays of the mesh before every solve, so that an array replaced in the mesh after the load is the one the
 solver uses.
@@ -155,11 +155,11 @@ Link the core (CMake target ``pytec3d_core``, include ``pytec3d_session.h``) and
 ``solver/examples/square_conductor_2d.cpp`` is a complete program: a 2D magnetostatic model built in memory, solved
 twice (the load doubled in place in between). It is built with the solver when CMake is given
 ``-DPYTEC3D_BUILD_CPP_EXAMPLES=ON``, e.g. in an environment with the build dependencies of the solver (those of
-``pytec3d-solver`` in ``conda/recipe.yaml``, ``pytec3d-libmesh`` included):
+``pytec3d-solver`` in ``conda/recipe.yaml``, ``pytec3d-mfem`` included):
 
 .. code-block:: bash
 
-   cmake -S solver -B build/solver -G Ninja -DLIBMESH_DIR=$CONDA_PREFIX -DPYTEC3D_BUILD_CPP_EXAMPLES=ON
+   cmake -S solver -B build/solver -G Ninja -DMFEM_DIR=$CONDA_PREFIX -DPYTEC3D_BUILD_CPP_EXAMPLES=ON
    cmake --build build/solver && build/solver/square_conductor_2d
 
 It runs in serial or with ``mpiexec``.

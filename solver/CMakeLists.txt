@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-# The pyTEC3D solver: the core library (libMesh, PETSc, MPI; no Python, no VTK) and its pybind11 module.
+# The pyTEC3D solver: the core library (MFEM, hypre, PETSc, MPI; no Python, no VTK) and its pybind11 module.
 # Built by scikit-build-core (pip install ./solver, see pyproject.toml) or by plain CMake (cmake --install puts the
 # module and its __init__.py in <prefix>/pytec3d_solver).
 
@@ -42,52 +42,43 @@ else()
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
 endif()
 
-# --- libMesh -----------------------------------------------------------------------
-# LIBMESH_DIR is the install prefix (contains include/ and lib/).
-set(LIBMESH_DIR "" CACHE PATH "Path to the libMesh installation prefix.")
-if(NOT LIBMESH_DIR AND DEFINED ENV{LIBMESH_DIR})
-  set(LIBMESH_DIR "$ENV{LIBMESH_DIR}")
+# --- MFEM -------------------------------------------------------------------------------
+# MFEM_DIR is the install prefix of MFEM (built by mfem/build_mfem.sh: parallel, hypre and METIS of the environment).
+set(MFEM_DIR "" CACHE PATH "Path to the MFEM installation prefix.")
+if(NOT MFEM_DIR AND DEFINED ENV{MFEM_DIR})
+  set(MFEM_DIR "$ENV{MFEM_DIR}")
 endif()
-if(NOT LIBMESH_DIR)
-  message(FATAL_ERROR "LIBMESH_DIR must be provided (e.g., -DLIBMESH_DIR=/path/to/libmesh).")
+if(NOT MFEM_DIR)
+  message(FATAL_ERROR "MFEM_DIR must be provided (e.g., -DMFEM_DIR=/path/to/mfem).")
 endif()
-
-set(LIBMESH_METHOD "$ENV{pyTEC3D_LIBMESH_METHOD}" CACHE STRING "libMesh method to link against: opt, dbg, devel")
-if(NOT LIBMESH_METHOD)
-  set(LIBMESH_METHOD "opt")
+# NO_DEFAULT_PATH: never silently pick up a different MFEM from the env (find_package() caches MFEM_DIR as the
+# directory of the config file; both are searched).
+find_package(MFEM CONFIG REQUIRED PATHS "${MFEM_DIR}" "${MFEM_DIR}/lib/cmake/mfem" NO_DEFAULT_PATH)
+if(NOT MFEM_USE_MPI)
+  message(FATAL_ERROR "The MFEM of MFEM_DIR is serial: the solver needs a parallel MFEM (MFEM_USE_MPI).")
 endif()
-string(TOLOWER "${LIBMESH_METHOD}" LIBMESH_METHOD)
-if(NOT LIBMESH_METHOD MATCHES "^(opt|dbg|devel)$")
-  message(FATAL_ERROR "Invalid LIBMESH_METHOD='${LIBMESH_METHOD}'. Allowed: opt, dbg, devel.")
+# The directory of the MFEM library (for the RPATH): from the imported target.
+get_target_property(PYTEC3D_MFEM_LIBRARY mfem IMPORTED_LOCATION_RELEASE)
+if(NOT PYTEC3D_MFEM_LIBRARY)
+  get_target_property(PYTEC3D_MFEM_LIBRARY mfem LOCATION)
 endif()
-message(STATUS "Using libMesh method: ${LIBMESH_METHOD}")
-
-# NO_DEFAULT_PATH: never silently pick up a different libMesh from the env.
-find_library(LIBMESH_LIB
-  NAMES mesh_${LIBMESH_METHOD}
-  PATHS "${LIBMESH_DIR}/lib"
-  NO_DEFAULT_PATH
-  REQUIRED
-)
-find_library(TIMPI_LIB
-  NAMES timpi_${LIBMESH_METHOD}
-  PATHS "${LIBMESH_DIR}/lib"
-  NO_DEFAULT_PATH
-  REQUIRED
-)
+get_filename_component(MFEM_LIB_DIR "${PYTEC3D_MFEM_LIBRARY}" DIRECTORY)
+message(STATUS "Using MFEM ${MFEM_VERSION}: ${PYTEC3D_MFEM_LIBRARY}")
 
 # --- Sources / output location --------------------------------------------------
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(SOURCES
   "${SOURCE_DIR}/array_io.cpp"
-  "${SOURCE_DIR}/augment_sparsity_on_nodes.cpp"
-  "${SOURCE_DIR}/binary_reader.cpp"
   "${SOURCE_DIR}/constraints.cpp"
   "${SOURCE_DIR}/curve.cpp"
+  "${SOURCE_DIR}/dof_space.cpp"
+  "${SOURCE_DIR}/dof_system.cpp"
   "${SOURCE_DIR}/element_builder.cpp"
   "${SOURCE_DIR}/element_evaluator.cpp"
   "${SOURCE_DIR}/element_parameters.cpp"
   "${SOURCE_DIR}/element_type.cpp"
+  "${SOURCE_DIR}/fe_collections.cpp"
+  "${SOURCE_DIR}/fe_mesh.cpp"
   "${SOURCE_DIR}/model_element_types.cpp"
   "${SOURCE_DIR}/logging.cpp"
   "${SOURCE_DIR}/mesh_quality.cpp"
@@ -98,14 +89,12 @@ set(SOURCES
   "${SOURCE_DIR}/pytec3d_equation_systems.cpp"
   "${SOURCE_DIR}/pytec3d_model.cpp"
   "${SOURCE_DIR}/pytec3d_session.cpp"
-  "${SOURCE_DIR}/pytec3d_system.cpp"
-  "${SOURCE_DIR}/reduced_linear_solver.cpp"
+  "${SOURCE_DIR}/quadrature.cpp"
+  "${SOURCE_DIR}/reduced_system.cpp"
   "${SOURCE_DIR}/report_tables.cpp"
   "${SOURCE_DIR}/solver_configuration.cpp"
   "${SOURCE_DIR}/solver_diagnostics.cpp"
-  "${SOURCE_DIR}/system_matrix_reduction.cpp"
   "${SOURCE_DIR}/time_step.cpp"
-  "${SOURCE_DIR}/variables_map.cpp"
 )
 get_filename_component(pyTEC3D_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
@@ -160,29 +149,27 @@ add_custom_target(pytec3d_git_commit
 
 # --- Runtime library search path (RPATH) ----------------------------------------
 # The module is copied as-is by pip (no relinking), so the RPATH must be baked in at build time. Absolute paths:
-# libMesh/TIMPI install dirs + the env's lib/ (PETSc, MPI, ...). Works on the machine that built libMesh. For
+# the MFEM install dir + the env's lib/ (hypre, PETSc, MPI, ...). Works on the machine that built MFEM. For
 # relocatable wheels, bundle the libs and use auditwheel instead.
-get_filename_component(LIBMESH_LIB_DIR "${LIBMESH_LIB}" DIRECTORY)
-get_filename_component(TIMPI_LIB_DIR   "${TIMPI_LIB}"   DIRECTORY)
 
 set(PYTEC3D_RUNTIME_PREFIX "$ENV{CONDA_PREFIX}" CACHE PATH
   "Env prefix whose lib/ holds PETSc/MPI at runtime")
 
-set(PYTEC3D_RPATH "${LIBMESH_LIB_DIR}" "${TIMPI_LIB_DIR}")
+set(PYTEC3D_RPATH "${MFEM_LIB_DIR}")
 if(PYTEC3D_RUNTIME_PREFIX)
   list(APPEND PYTEC3D_RPATH "${PYTEC3D_RUNTIME_PREFIX}/lib")
 endif()
 list(REMOVE_DUPLICATES PYTEC3D_RPATH)
 message(STATUS "Module RPATH: ${PYTEC3D_RPATH}")
 
-# --- Solver core: plain C++ (libMesh, PETSc, MPI), no Python, no VTK -------------------------------------------
+# --- Solver core: plain C++ (MFEM, hypre, PETSc, MPI), no Python, no VTK -------------------------------------------
 set(pyTEC3D_INCLUDE_DIRS
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
   "${PYTEC3D_GENERATED_DIR}"
 )
 # Third-party headers: SYSTEM, so that the warnings below are about this project only.
 set(pyTEC3D_SYSTEM_INCLUDE_DIRS
-  "${LIBMESH_DIR}/include"
+  ${MFEM_INCLUDE_DIRS}
   ${PETSC_INCLUDE_DIRS}
 )
 
@@ -213,8 +200,7 @@ target_link_libraries(pytec3d_core
   PUBLIC
     spdlog::spdlog_header_only
     nlohmann_json::nlohmann_json
-    ${LIBMESH_LIB}
-    ${TIMPI_LIB}
+    mfem
     PkgConfig::PETSC
     MPI::MPI_CXX
     Threads::Threads
@@ -234,7 +220,7 @@ endfunction()
 
 # MinGW (the Windows build, MSYS2): the GCC and C++ runtimes are linked statically; the DLLs of MSYS2 the module still
 # needs are shipped next to it (conda/build_windows.sh).
-# Libraries to add to the link (e.g. what a static libMesh or PETSc of another configuration needs).
+# Libraries to add to the link (e.g. what a static MFEM or PETSc of another configuration needs).
 set(PYTEC3D_EXTRA_LIBS "" CACHE STRING "Extra libraries linked to the solver core")
 if(PYTEC3D_EXTRA_LIBS)
   target_link_libraries(pytec3d_core PUBLIC ${PYTEC3D_EXTRA_LIBS})
@@ -243,8 +229,8 @@ endif()
 if(MINGW)
   # Static PETSc (the Windows build): its private dependencies (MUMPS, ScaLAPACK, METIS, BLAS, Fortran runtime) too.
   target_link_libraries(pytec3d_core PUBLIC ${PETSC_STATIC_LDFLAGS} ws2_32)
-  # --allow-multiple-definition: the static libMesh has duplicate definitions for the MinGW linker (see
-  # conda/build_windows.sh), harmless for the elements pyTEC3D uses.
+  # --allow-multiple-definition: duplicate definitions of the static libraries for the MinGW linker (see
+  # conda/build_windows.sh).
   set(PYTEC3D_STATIC_RUNTIME_OPTIONS -static-libgcc -static-libstdc++ "LINKER:--allow-multiple-definition")
 endif()
 

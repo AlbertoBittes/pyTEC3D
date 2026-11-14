@@ -20,7 +20,7 @@ mkdir "%DIST%"
   echo Metadata-Version: 2.1
   echo Name: pytec3d-solver
   echo Version: %PKG_VERSION%
-  echo Summary: pyTEC3D C++ solver ^(libMesh, PETSc / MUMPS, MPI^) and its Python module pytec3d_solver
+  echo Summary: pyTEC3D C++ solver ^(MFEM, hypre, PETSc / MUMPS, MPI^) and its Python module pytec3d_solver
   echo Requires-Dist: numpy
 ) > "%DIST%\METADATA"
 echo conda> "%DIST%\INSTALLER"

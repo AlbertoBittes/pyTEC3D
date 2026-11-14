@@ -1,1262 +1,633 @@
 /**
- * @file global_constraints_object.cpp
- * @brief GlobalConstraintsObject: time-integration pins, Dirichlet BCs, and DOF-coupling constraints.
- *
- * Merges three constraint sources each time libMesh calls constrain():
- *   1. Time-integration homogeneous pins: on a static step, the DOFs whose fields have no row in K (only C or M,
- *      as the element types say) are set to zero.
- *   2. Point/nodal Dirichlet BCs from the "_F" point arrays of the model (with optional local-to-global rotation).
- *   3. DOF-coupling constraints from CP_* periodic-boundary node pairs.
- * Vector fields: 3 components, or the in-plane x, y of a vector field on 2D elements (whose local frames must then
- * be rotations about z); scalars and single components: one DOF per node.
+ * @file constraints.cpp
+ * @brief The constraints of the DOF system (constraints.h).
  */
 #include "constraints.h"
-#include "pytec3d_system.h"
-#include "pytec3d_equation_systems.h"
-#include "pytec3d_model.h"
-#include "augment_sparsity_on_nodes.h"
-#include "model_element_types.h"
 
-#include "variables_map.h"
-#include <libmesh/dof_map.h>
-#include <libmesh/elem.h>
-#include <libmesh/libmesh.h>
-#include <libmesh/mesh_base.h>
-#include <libmesh/node.h>
-#include <libmesh/numeric_vector.h>
-#include <libmesh/tensor_value.h>
-#include <libmesh/vector_value.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
-#include <iomanip>
 #include <limits>
-#include <map>
+#include <set>
 #include <sstream>
-#include <stdexcept>
-#include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
-#include <vector>
+
+#include "element_type.h"
 #include "logging.h"
+#include "model_element_types.h"
+#include "registries.h"
 #include "report_tables.h"
 
-
-using libMesh::dof_id_type;
-using libMesh::DofMap;
-using libMesh::Elem;
-using libMesh::MeshBase;
-using libMesh::Node;
-using libMesh::Number;
-using libMesh::NumericVector;
-using libMesh::Point;
-using libMesh::Real;
-using libMesh::RealGradient;
-using libMesh::RealVectorValue;
-using libMesh::SparseMatrix;
-using libMesh::System;
-using libMesh::TensorValue;
-using libMesh::VectorValue;
-
-namespace
+namespace pytec3d
 {
-    std::unordered_map<dof_id_type, unsigned int> build_dof_to_variable_index_map(const System &system)
+    namespace
     {
-        std::unordered_map<dof_id_type, unsigned int> dof_to_var_idx;
-        const auto &mesh = system.get_equation_systems().get_mesh();
-        const unsigned int n_vars = system.n_vars();
+        using la::Real;
+        using la::RealTensorValue;
+        using la::RealVectorValue;
 
-        // Map each local DOF to its variable index for O(1) per-constraint variable lookups.
-        for (unsigned int var_num = 0; var_num < n_vars; ++var_num)
+        [[noreturn]] void fail(const std::string &message)
         {
-            std::vector<dof_id_type> dof_indices;
-            system.get_dof_map().local_variable_indices(dof_indices, mesh, var_num);
-            for (const dof_id_type dof : dof_indices)
-                dof_to_var_idx.emplace(dof, var_num);
+            logging::error_and_abort(message);
         }
 
-        return dof_to_var_idx;
-    }
-
-    TensorValue<Real> get_local_to_global_for_node(
-        const pyTEC3DEquationSystems::RotationMap &node_rotations,
-        const dof_id_type node_id,
-        const std::string &context)
-    {
-        const auto it = node_rotations.find(node_id);
-        if (it == node_rotations.end())
+        /** @brief True when the rotation @p R maps the xy plane onto itself (a rotation about z): the only local frame in
+         * which a planar field (x, y only) can be given. */
+        bool is_rotation_about_z(const RealTensorValue &R)
         {
-            std::ostringstream msg;
-            msg << context << ": missing node rotation cache for node id " << node_id << ".";
-            pytec3d::logging::error_and_abort(msg.str());
+            const Real tol = 1e-12;
+            return std::abs(R(0, 2)) < tol && std::abs(R(1, 2)) < tol && std::abs(R(2, 0)) < tol && std::abs(R(2, 1)) < tol;
         }
-        return it->second;
-    }
 
-    /** @brief True when the rotation @p R maps the xy plane onto itself (a rotation about z): the only local frame in
-     *  which the in-plane components of a 2D vector field can be constrained or coupled without its absent z. */
-    bool is_rotation_about_z(const TensorValue<Real> &R)
-    {
-        const Real tol = 1e-10;
-        return std::abs(R(0, 2)) < tol && std::abs(R(1, 2)) < tol && std::abs(R(2, 0)) < tol && std::abs(R(2, 1)) < tol;
-    }
-
-    /** @brief The physical components of the vector variable @p var on @p node: 3, or 2 (x, y) for the variable of a
-     *  vector field on 2D elements, which has only the components of the element dimension. */
-    unsigned int n_node_components(const Node &node, unsigned int sys_num, unsigned int var)
-    {
-        return std::min(3u, node.n_comp(sys_num, var));
-    }
-
-} // namespace
-
-template <typename ImplSystem>
-GlobalConstraintsObject<ImplSystem>::GlobalConstraintsObject(pyTEC3DDOFSystem<ImplSystem> &system)
-    : system_(system)
-{
-    this->initialize_coupling_entries_cache();
-}
-
-template <typename ImplSystem>
-void GlobalConstraintsObject<ImplSystem>::initialize_coupling_entries_cache()
-{
-    _coupling_cp_id_values.clear();
-    _coupling_variable_values.clear();
-    _edge_coupling_cp_ids.clear();
-
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
-    auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    auto *solver = &equation_systems.model();
-    if (!solver)
-        return;
-
-    for (const pytec3d::DofCoupling &coupling : equation_systems.get_model_data().dof_couplings())
-    {
-        _coupling_cp_id_values.push_back(coupling.cp_id);
-        _coupling_variable_values.push_back(coupling.variable);
-    }
-}
-
-template <typename ImplSystem>
-std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEntry>
-GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
-{
-    std::map<dof_id_type, ConstraintEntry> constraints;
-
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
-    System &system = *dof_system;
-
-    const auto *time_step = dof_system->current_time_step();
-    if (time_step && time_step->transient_effects)
-        return constraints;
-
-    DofMap &dof_map = system.get_dof_map();
-    const MeshBase &mesh = system.get_equation_systems().get_mesh();
-    const auto &factory = dof_system->get_pytec3d_equation_systems().element_types();
-
-    // A DOF is pinned when no element around it gives its field a row in K: its equation would be empty.
-    std::unordered_set<dof_id_type> without_stiffness;
-    std::unordered_set<dof_id_type> with_stiffness;
-    std::vector<dof_id_type> dof_indices;
-    for (const auto *elem : mesh.active_element_ptr_range())
-    {
-        const ModelElementTypes::Entry &entry = factory.get(elem->subdomain_id());
-        const pytec3d::ElementType &type = *entry.type;
-        for (std::size_t field = 0; field < type.spec().fields.size(); ++field)
+        RealTensorValue rotation_of(const ConstraintInputs &in, std::int64_t point)
         {
-            const pytec3d::FieldSpec &spec = type.field(field);
-            if (spec.kind != pytec3d::FieldKind::Dof || !pytec3d::ElementType::active(spec, entry.domain))
-                continue;
-            auto &target = type.has_stiffness(field, entry.domain) ? with_stiffness : without_stiffness;
-            const std::string label(pytec3d::registry::info(spec.variable).label);
-            dof_map.dof_indices(elem, dof_indices, system.variable_number(label));
-            target.insert(dof_indices.begin(), dof_indices.end());
+            if (!in.node_rotations || in.node_rotations->empty())
+                return RealTensorValue(1, 0, 0, 0, 1, 0, 0, 0, 1);
+            return (*in.node_rotations)[static_cast<std::size_t>(point)];
         }
-    }
 
-    for (const dof_id_type dof : without_stiffness)
-        if (!with_stiffness.count(dof) && dof >= dof_map.first_dof() && dof < dof_map.end_dof())
-            constraints.emplace(dof, ConstraintEntry{});
-
-    return constraints;
-}
-
-template <typename ImplSystem>
-std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEntry>
-GlobalConstraintsObject<ImplSystem>::build_point_constraints()
-{
-    std::map<dof_id_type, ConstraintEntry> constraints;
-    this->_point_constraint_owner_cache.clear();
-
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
-    System &system = *dof_system;
-    auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    const pytec3d::ModelArrays &arrays = equation_systems.model().arrays();
-    const auto &node_rotations = equation_systems.get_node_local_to_global_rotations();
-
-    auto vector_variables = VariablesMap::get_vector_variables_for_system(system);
-    std::unordered_map<std::string, const pytec3d::RealArray *> vector_arrays;
-    std::unordered_set<unsigned int> vector_var_numbers;
-    for (const auto &entry : vector_variables)
-    {
-        const std::string array_name = "_" + entry.first;
-        vector_arrays.emplace(entry.first, arrays.point_field(array_name));
-        for (const auto &component : entry.second)
-            vector_var_numbers.insert(component.var_number);
-    }
-
-    struct ScalarArrayEntry
-    {
-        unsigned int var_number = libMesh::invalid_uint;
-        const pytec3d::RealArray *array = nullptr;
-        unsigned int component_index = 0;
-    };
-
-    std::vector<ScalarArrayEntry> scalar_arrays;
-    const unsigned int n_vars = system.n_vars();
-    scalar_arrays.reserve(n_vars);
-    for (unsigned int var_num = 0; var_num < n_vars; ++var_num)
-    {
-        if (vector_var_numbers.count(var_num))
-            continue;
-
-        const std::string &var_name = system.variable_name(var_num);
-        const GlobalVariableName global_var = VariablesMap::get_key_by_predicate_one(
-            [&var_name](const VariableInfo &info)
-            {
-                return info.global_label == var_name;
-            });
-        const auto &var_info = VariablesMap::get_info_by_key(global_var);
-
-        const std::string array_name = VariablesMap::constraint_array_name(system, var_num);
-        const pytec3d::RealArray *array = arrays.point_field(array_name);
-
-        // An edge variable has one value per edge node, in a fixed component of its array.
-        const unsigned int component = VariablesMap::is_edge_variable(system, var_num) ? VariablesMap::edge_constraint_component
-                                                                                    : var_info.component_index;
-        scalar_arrays.push_back({var_num, array, component});
-    }
-
-    const Real tol = std::numeric_limits<Real>::epsilon();
-    std::unordered_set<dof_id_type> constrained_dofs;
-    for (const auto &node_ptr : equation_systems.get_mesh().local_node_ptr_range())
-    {
-        const auto point_id = static_cast<std::size_t>(node_ptr->id());
-        const dof_id_type node_id = node_ptr->id();
-
-        bool rotation_ready = false;
-        TensorValue<Real> global_to_local(
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, 1.0);
-        TensorValue<Real> local_to_global(
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, 1.0);
-
-        // Apply Dirichlet constraints for vector-valued variables.
-        for (const auto &var_entry : vector_variables)
+        /** @brief The constraint array of a variable: "_" + the field label of its grid arrays. */
+        std::string constraint_array_name(const fem::Variable &variable)
         {
-            auto array_it = vector_arrays.find(var_entry.first);
-            if (array_it == vector_arrays.end() || array_it->second == nullptr)
-                continue;
-            const pytec3d::RealArray *constraint_array = array_it->second;
+            return "_" + std::string(registry::info(variable.id).api_label);
+        }
 
-            // Get the number of components for this variable
-            const auto &components = var_entry.second;
-            const unsigned int max_components = std::min<unsigned int>(3, components.size());
+        /** @brief Component of the constraint array of an edge field holding its value (its midside point). */
+        constexpr unsigned int kEdgeConstraintComponent = 2;
 
-            // Initialize dof numbers and the values of the candidate constraint dofs
-            std::array<dof_id_type, 3> dofs = {
-                libMesh::invalid_uint,
-                libMesh::invalid_uint,
-                libMesh::invalid_uint};
-            std::array<Real, 3> values = {
-                std::numeric_limits<Real>::quiet_NaN(),
-                std::numeric_limits<Real>::quiet_NaN(),
-                std::numeric_limits<Real>::quiet_NaN()};
+        /** @brief Rows being built on this rank, for the owned DOFs. */
+        using RowMap = std::map<PetscInt, ConstraintRow>;
 
-            // Retrieve the value of the constraints. The variable of a vector field on 2D elements has only the in-plane
-            // components x, y on its nodes (a planar field): the z component of _F does not apply there.
-            bool planar = false;
-            for (unsigned int i = 0; i < max_components; ++i)
+        void sort_row(ConstraintRow &row)
+        {
+            std::sort(row.masters.begin(), row.masters.end());
+        }
+
+        /** @brief The global DOF of (variable, point, component) on this rank, or -1. */
+        PetscInt global_dof(const fem::DofSpace &dofs, unsigned int v, std::int64_t point, unsigned int c)
+        {
+            const long long l = dofs.point_dof(v, point, c);
+            return l < 0 ? -1 : dofs.global(static_cast<std::size_t>(l));
+        }
+
+        bool owned_dof(const fem::DofSpace &dofs, unsigned int v, std::int64_t point, unsigned int c, PetscInt &g)
+        {
+            const long long l = dofs.point_dof(v, point, c);
+            if (l < 0 || !dofs.owned(static_cast<std::size_t>(l)))
+                return false;
+            g = dofs.global(static_cast<std::size_t>(l));
+            return true;
+        }
+
+        // ---- Dirichlet values -------------------------------------------------------------------------------------
+
+        RowMap point_constraints(const ConstraintInputs &in)
+        {
+            const fem::DofSpace &dofs = *in.dofs;
+            RowMap rows;
+            const Real tol = std::numeric_limits<Real>::epsilon();
+            for (unsigned int v = 0; v < dofs.n_vars(); ++v)
             {
-                const auto &component = components[i];
-
-                const unsigned int sys_num = system.number();
-                if (component.var_number == libMesh::invalid_uint ||
-                    component.var_number >= node_ptr->n_vars(sys_num) ||
-                    node_ptr->n_dofs(sys_num, component.var_number) == 0)
+                const fem::Variable &variable = dofs.variable(v);
+                const RealArray *array = in.arrays->point_field(constraint_array_name(variable));
+                if (!array)
                     continue;
-                if (component.dof_component >= n_node_components(*node_ptr, sys_num, component.var_number))
+
+                if (!variable.vector_lagrange())
                 {
-                    planar = true;
-                    continue;
-                }
-
-                dof_id_type dof = node_ptr->dof_number(sys_num, component.var_number, component.dof_component);
-
-                if (component.component_index >= constraint_array->n_components())
-                    continue;
-                dofs[component.component_index] = dof;
-                values[component.component_index] = (*constraint_array)(point_id, component.component_index);
-            }
-
-            // Check if there is at least one component constrained.
-            bool any_constraint = false;
-            for (unsigned int i = 0; i < max_components; ++i)
-            {
-                if (!std::isnan(values[i]))
-                {
-                    any_constraint = true;
-                    break;
-                }
-            }
-            if (!any_constraint)
-                continue;
-
-            // If all the components (3, or x and y of a planar field) are constrained, we can directly apply the
-            // constraint without worrying about linear dependence.
-            const unsigned int n_field_components = planar ? 2 : 3;
-            bool full_vector_constraint = (max_components == 3);
-            for (unsigned int i = 0; i < n_field_components && full_vector_constraint; ++i)
-            {
-                if (dofs[i] == libMesh::invalid_uint || std::isnan(values[i]))
-                    full_vector_constraint = false;
-            }
-
-            // Apply rotation to constraint values
-            if (!rotation_ready)
-            {
-                local_to_global = get_local_to_global_for_node(
-                    node_rotations,
-                    node_id,
-                    "Point constraint rotation");
-                global_to_local = TensorValue<Real>(local_to_global.transpose());
-                rotation_ready = true;
-            }
-
-            // A planar field has no z: its local frame can only turn about z.
-            if (planar && !is_rotation_about_z(local_to_global))
-            {
-                std::ostringstream msg;
-                msg << "Point constraint: node " << node_id << " has a local frame that is not a rotation about z, "
-                    << "but the vector field '" << var_entry.first << "' has only the in-plane components x, y there "
-                    << "(2D elements).";
-                pytec3d::logging::error_and_abort(msg.str());
-            }
-
-            // If all components are constrained, we can directly apply the rotated constraints
-            // resulting from the explicit rotation of the original constraints, without worrying about linear dependence.
-            if (full_vector_constraint)
-            {
-                VectorValue<Real> local_values(values[0], values[1], planar ? 0.0 : values[2]);
-                const VectorValue<Real> global_values(local_to_global * local_values);
-
-                for (unsigned int i = 0; i < n_field_components; ++i)
-                {
-                    ConstraintEntry entry;
-                    entry.value = global_values(i);
-                    if (constraints.emplace(dofs[i], entry).second)
-                    {
-                        this->_point_constraint_owner_cache[dofs[i]] = DofOwnerInfo{node_id, system.variable_name(components[i].var_number)};
-                        constrained_dofs.insert(dofs[i]);
-                    }
-                }
-                continue;
-            }
-
-            // If not all components of the vector variable are constrained
-            // we need to check for linear dependence and possibly reduce the constraints to a subset of independent ones.
-            std::array<unsigned int, 3> constrained_components = {0, 0, 0};
-            unsigned int n_constrained_components = 0;
-            for (unsigned int i = 0; i < max_components; ++i)
-                if (!std::isnan(values[i]))
-                    constrained_components[n_constrained_components++] = i;
-
-            if (n_constrained_components == 2)
-            {
-                const unsigned int eq0 = constrained_components[0];
-                const unsigned int eq1 = constrained_components[1];
-                const Real rhs0 = values[eq0];
-                const Real rhs1 = values[eq1];
-
-                std::array<unsigned int, 3> candidate_dofs = {0, 0, 0};
-                unsigned int n_candidate_dofs = 0;
-                for (unsigned int j = 0; j < max_components; ++j)
-                {
-                    if (dofs[j] == libMesh::invalid_uint)
+                    // A scalar, one component of a vector field, or an edge field (component 2 of its midside point).
+                    const unsigned int component = variable.edge() ? kEdgeConstraintComponent
+                                                                   : (variable.n_components == 1 ? variable.components[0] : 0u);
+                    if (component >= array->n_components())
                         continue;
-                    if (constrained_dofs.count(dofs[j]) != 0)
-                        continue;
-                    candidate_dofs[n_candidate_dofs++] = j;
-                }
-
-                bool handled = false;
-                if (n_candidate_dofs >= 2)
-                {
-                    Real best_det = 0.0;
-                    unsigned int s0 = 0;
-                    unsigned int s1 = 0;
-                    for (unsigned int a = 0; a < n_candidate_dofs; ++a)
+                    for (const auto &[point, dof] : dofs.point_dofs(v))
                     {
-                        for (unsigned int b = a + 1; b < n_candidate_dofs; ++b)
-                        {
-                            const unsigned int j0 = candidate_dofs[a];
-                            const unsigned int j1 = candidate_dofs[b];
-                            const Real a00 = global_to_local(eq0, j0);
-                            const Real a01 = global_to_local(eq0, j1);
-                            const Real a10 = global_to_local(eq1, j0);
-                            const Real a11 = global_to_local(eq1, j1);
-                            const Real det = a00 * a11 - a01 * a10;
-                            const Real abs_det = std::abs(det);
-                            if (abs_det > best_det)
-                            {
-                                best_det = abs_det;
-                                s0 = j0;
-                                s1 = j1;
-                            }
-                        }
-                    }
-
-                    if (best_det >= tol)
-                    {
-                        const Real a00 = global_to_local(eq0, s0);
-                        const Real a01 = global_to_local(eq0, s1);
-                        const Real a10 = global_to_local(eq1, s0);
-                        const Real a11 = global_to_local(eq1, s1);
-                        const Real det = a00 * a11 - a01 * a10;
-                        if (std::abs(det) < tol)
+                        (void)dof;
+                        PetscInt g = -1;
+                        if (!owned_dof(dofs, v, point, 0, g))
                             continue;
-
-                        const Real inv00 = a11 / det;
-                        const Real inv01 = -a01 / det;
-                        const Real inv10 = -a10 / det;
-                        const Real inv11 = a00 / det;
-
-                        const unsigned int slaves[2] = {s0, s1};
-                        for (unsigned int k = 0; k < 2; ++k)
-                        {
-                            const unsigned int slave = slaves[k];
-                            const Real inv0 = (k == 0) ? inv00 : inv10;
-                            const Real inv1 = (k == 0) ? inv01 : inv11;
-
-                            ConstraintEntry entry;
-                            for (unsigned int j = 0; j < max_components; ++j)
-                            {
-                                if (j == s0 || j == s1)
-                                    continue;
-                                if (dofs[j] == libMesh::invalid_uint)
-                                    continue;
-                                const Real coeff =
-                                    -(inv0 * global_to_local(eq0, j) + inv1 * global_to_local(eq1, j));
-                                entry.row[dofs[j]] = coeff;
-                            }
-
-                            entry.value = inv0 * rhs0 + inv1 * rhs1;
-                            const dof_id_type slave_dof = dofs[slave];
-                            if (constraints.emplace(slave_dof, entry).second)
-                            {
-                                this->_point_constraint_owner_cache[slave_dof] = DofOwnerInfo{node_id, system.variable_name(components[slave].var_number)};
-                                constrained_dofs.insert(slave_dof);
-                            }
-                        }
-
-                        handled = true;
-                    }
-                }
-
-                if (handled)
-                    continue;
-            }
-
-            for (unsigned int i = 0; i < max_components; ++i)
-            {
-                const Real constraint_value = values[i];
-                if (std::isnan(constraint_value))
-                    continue;
-
-                unsigned int pivot_index = i;
-                Real pivot_coeff = global_to_local(i, pivot_index);
-
-                if (dofs[pivot_index] == libMesh::invalid_uint || std::abs(pivot_coeff) < tol)
-                {
-                    Real best = 0.0;
-                    for (unsigned int j = 0; j < max_components; ++j)
-                    {
-                        if (dofs[j] == libMesh::invalid_uint)
+                        const Real value = (*array)(static_cast<std::size_t>(point), component);
+                        if (std::isnan(value))
                             continue;
-                        const Real abs_coeff = std::abs(global_to_local(i, j));
-                        if (abs_coeff > best)
-                        {
-                            best = abs_coeff;
-                            pivot_coeff = global_to_local(i, j);
-                            pivot_index = j;
-                        }
+                        ConstraintRow row;
+                        row.value = value;
+                        rows.emplace(g, row);
                     }
-                }
-
-                if (dofs[pivot_index] == libMesh::invalid_uint || std::abs(pivot_coeff) < tol)
                     continue;
-
-                ConstraintEntry entry;
-                for (unsigned int j = 0; j < max_components; ++j)
-                {
-                    if (j == pivot_index)
-                        continue;
-                    if (dofs[j] == libMesh::invalid_uint)
-                        continue;
-                    entry.row[dofs[j]] = -global_to_local(i, j) / pivot_coeff;
                 }
 
-                entry.value = constraint_value / pivot_coeff;
-                const dof_id_type constrained_dof = dofs[pivot_index];
-                if (constraints.emplace(constrained_dof, entry).second)
+                // A vector field: its components in the node frame. A planar field (2D elements) has x, y only.
+                const bool planar = variable.vdim < 3;
+                for (const auto &[point, dof] : dofs.point_dofs(v))
                 {
-                    this->_point_constraint_owner_cache[constrained_dof] = DofOwnerInfo{node_id, system.variable_name(components[pivot_index].var_number)};
-                    constrained_dofs.insert(constrained_dof);
-                }
-            }
-        }
-
-        // Handle scalar variable constraints
-        for (const auto &scalar_entry : scalar_arrays)
-        {
-            const unsigned int sys_num = system.number();
-            if (scalar_entry.var_number == libMesh::invalid_uint || !scalar_entry.array ||
-                scalar_entry.var_number >= node_ptr->n_vars(sys_num) ||
-                node_ptr->n_dofs(sys_num, scalar_entry.var_number) == 0)
-                continue;
-
-            dof_id_type dof = node_ptr->dof_number(sys_num, scalar_entry.var_number, 0);
-
-            if (constrained_dofs.count(dof) != 0)
-                continue;
-
-            if (scalar_entry.component_index >= scalar_entry.array->n_components())
-                continue;
-            const Real value = (*scalar_entry.array)(point_id, scalar_entry.component_index);
-            if (std::isnan(value))
-                continue;
-
-            ConstraintEntry entry;
-            entry.value = value;
-            if (constraints.emplace(dof, entry).second)
-            {
-                this->_point_constraint_owner_cache[dof] = DofOwnerInfo{node_id, system.variable_name(scalar_entry.var_number)};
-                constrained_dofs.insert(dof);
-            }
-        }
-    }
-
-    return constraints;
-}
-
-template <typename ImplSystem>
-std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEntry>
-GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
-{
-    std::map<dof_id_type, ConstraintEntry> constraints;
-
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
-    System &system = *dof_system;
-    auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    auto *solver = &equation_systems.model();
-
-    const auto &node_rotations = equation_systems.get_node_local_to_global_rotations();
-    const std::size_t n_entries =
-        std::min(_coupling_cp_id_values.size(), _coupling_variable_values.size());
-    if (n_entries == 0)
-        return constraints;
-
-    const auto *coupling_functor = solver->get_coupling_functor();
-    const auto &pairs_by_cp = coupling_functor->cp_pairs_by_cp;
-    if (pairs_by_cp.empty())
-        return constraints;
-
-    auto vector_variables = VariablesMap::get_vector_variables_for_system(system);
-    const MeshBase &mesh = equation_systems.get_mesh();
-    const unsigned int proc_id = mesh.comm().rank();
-    const auto build_coupled_groups =
-        [&vector_variables, &system](
-            const std::string &variable,
-            std::map<std::string, std::vector<VariablesMap::VectorComponent>> &coupled_vectors,
-            std::unordered_set<std::string> &coupled_labels)
-    {
-        coupled_labels.clear();
-        for (const auto &label : VariablesMap::get_global_labels_for_label(system, variable))
-            coupled_labels.insert(label);
-
-        coupled_vectors.clear();
-        if (coupled_labels.empty())
-            return;
-
-        for (const auto &vec_entry : vector_variables)
-        {
-            const auto &components = vec_entry.second;
-            if (components.size() < 3)
-                continue;
-
-            bool all_present = true;
-            for (const auto &component : components)
-            {
-                if (!coupled_labels.count(component.global_label))
-                {
-                    all_present = false;
-                    break;
-                }
-            }
-            if (!all_present)
-                continue;
-
-            coupled_vectors.emplace(vec_entry.first, components);
-            for (const auto &component : components)
-                coupled_labels.erase(component.global_label);
-        }
-    };
-
-    for (std::size_t entry_idx = 0; entry_idx < n_entries; ++entry_idx)
-    {
-        const int cp_id = _coupling_cp_id_values[entry_idx];
-        const std::string &variable = _coupling_variable_values[entry_idx];
-        if (variable.empty())
-            continue;
-
-        auto pairs_it = pairs_by_cp.find(cp_id);
-        if (pairs_it == pairs_by_cp.end() || pairs_it->second.empty())
-            continue;
-
-        std::map<std::string, std::vector<VariablesMap::VectorComponent>> coupled_vectors;
-        std::unordered_set<std::string> coupled_labels;
-        build_coupled_groups(variable, coupled_vectors, coupled_labels);
-        if (coupled_vectors.empty() && coupled_labels.empty())
-            continue;
-
-        for (const auto &pair : pairs_it->second)
-        {
-            const Node *node_first = mesh.query_node_ptr(pair.first);
-            const Node *node_second = mesh.query_node_ptr(pair.second);
-            if (!node_second)
-                continue;
-            if (node_second->processor_id() != proc_id)
-                continue;
-            if (!node_first)
-            {
-                std::ostringstream msg;
-                msg << "Coupling constraint: slave node " << pair.second
-                    << " found without master node " << pair.first
-                    << ".";
-                pytec3d::logging::error_and_abort(msg.str());
-            }
-
-            for (const auto &vec_entry : coupled_vectors)
-            {
-                const auto &components = vec_entry.second;
-                std::array<dof_id_type, 3> dofs_first = {
-                    libMesh::invalid_uint,
-                    libMesh::invalid_uint,
-                    libMesh::invalid_uint};
-                std::array<dof_id_type, 3> dofs_second = {
-                    libMesh::invalid_uint,
-                    libMesh::invalid_uint,
-                    libMesh::invalid_uint};
-
-                bool complete = true;
-                // The variable of a vector field on 2D elements has only the in-plane components x, y (planar).
-                bool planar = false;
-                const unsigned int sys_num = system.number();
-                for (const auto &component : components)
-                {
-                    if (component.var_number == libMesh::invalid_uint ||
-                        component.var_number >= node_first->n_vars(sys_num) ||
-                        component.var_number >= node_second->n_vars(sys_num) ||
-                        node_first->n_dofs(sys_num, component.var_number) == 0 ||
-                        node_second->n_dofs(sys_num, component.var_number) == 0)
+                    (void)dof;
+                    std::array<PetscInt, 3> g = {-1, -1, -1};
+                    std::array<bool, 3> owned = {false, false, false};
+                    std::array<Real, 3> values = {std::numeric_limits<Real>::quiet_NaN(), std::numeric_limits<Real>::quiet_NaN(),
+                                                  std::numeric_limits<Real>::quiet_NaN()};
+                    for (unsigned int c = 0; c < static_cast<unsigned int>(variable.vdim); ++c)
                     {
-                        complete = false;
-                        break;
+                        const long long l = dofs.point_dof(v, point, c);
+                        if (l < 0 || c >= array->n_components())
+                            continue;
+                        g[c] = dofs.global(static_cast<std::size_t>(l));
+                        owned[c] = dofs.owned(static_cast<std::size_t>(l));
+                        values[c] = (*array)(static_cast<std::size_t>(point), c);
                     }
-                    const unsigned int n_first = n_node_components(*node_first, sys_num, component.var_number);
-                    const unsigned int n_second = n_node_components(*node_second, sys_num, component.var_number);
-                    if (n_first != n_second)
+                    if (!owned[0] && !owned[1] && !owned[2])
+                        continue;
+                    if (std::isnan(values[0]) && std::isnan(values[1]) && std::isnan(values[2]))
+                        continue;
+
+                    const RealTensorValue local_to_global = rotation_of(in, point);
+                    const RealTensorValue global_to_local = local_to_global.transpose();
+                    if (planar && !is_rotation_about_z(local_to_global))
                     {
                         std::ostringstream msg;
-                        msg << "Coupling constraint: the vector field '" << vec_entry.first << "' has " << n_first
-                            << " components on master node " << node_first->id() << " but " << n_second
-                            << " on slave node " << node_second->id() << ".";
-                        pytec3d::logging::error_and_abort(msg.str());
+                        msg << "Point constraint: node " << point << " has a local frame that is not a rotation about z, "
+                            << "but the vector field '" << variable.label << "' has only the in-plane components x, y there "
+                            << "(2D elements).";
+                        fail(msg.str());
                     }
-                    if (component.dof_component >= n_first)
+
+                    std::unordered_set<PetscInt> constrained;
+                    const auto add = [&](unsigned int c, ConstraintRow row)
                     {
-                        planar = true;
+                        if (!owned[c])
+                        {
+                            constrained.insert(g[c]);
+                            return;
+                        }
+                        sort_row(row);
+                        if (rows.emplace(g[c], row).second)
+                            constrained.insert(g[c]);
+                    };
+
+                    // All the components given: the global values directly.
+                    const unsigned int n_field = planar ? 2 : 3;
+                    bool full = true;
+                    for (unsigned int c = 0; c < n_field && full; ++c)
+                        full = g[c] >= 0 && !std::isnan(values[c]);
+                    if (full)
+                    {
+                        const RealVectorValue global = local_to_global * RealVectorValue(values[0], values[1], planar ? 0.0 : values[2]);
+                        for (unsigned int c = 0; c < n_field; ++c)
+                        {
+                            ConstraintRow row;
+                            row.value = global(c);
+                            add(c, row);
+                        }
                         continue;
                     }
 
-                    dofs_first[component.component_index] =
-                        node_first->dof_number(sys_num, component.var_number, component.dof_component);
-                    dofs_second[component.component_index] =
-                        node_second->dof_number(sys_num, component.var_number, component.dof_component);
-                }
+                    // Some components: rows on the global DOFs, from independent equations of the local ones.
+                    std::array<unsigned int, 3> given = {0, 0, 0};
+                    unsigned int n_given = 0;
+                    for (unsigned int c = 0; c < 3; ++c)
+                        if (!std::isnan(values[c]))
+                            given[n_given++] = c;
 
-                const unsigned int n_field_components = planar ? 2 : 3;
-                for (unsigned int i = 0; i < n_field_components; ++i)
-                {
-                    if (dofs_first[i] == libMesh::invalid_uint || dofs_second[i] == libMesh::invalid_uint)
+                    bool handled = false;
+                    if (n_given == 2)
                     {
-                        complete = false;
-                        break;
+                        const unsigned int eq0 = given[0], eq1 = given[1];
+                        std::array<unsigned int, 3> candidates = {0, 0, 0};
+                        unsigned int n_candidates = 0;
+                        for (unsigned int j = 0; j < 3; ++j)
+                            if (g[j] >= 0 && !constrained.count(g[j]))
+                                candidates[n_candidates++] = j;
+                        if (n_candidates >= 2)
+                        {
+                            Real best = 0.0;
+                            unsigned int s0 = 0, s1 = 0;
+                            for (unsigned int a = 0; a < n_candidates; ++a)
+                                for (unsigned int b = a + 1; b < n_candidates; ++b)
+                                {
+                                    const unsigned int j0 = candidates[a], j1 = candidates[b];
+                                    const Real det = global_to_local(eq0, j0) * global_to_local(eq1, j1) -
+                                                     global_to_local(eq0, j1) * global_to_local(eq1, j0);
+                                    if (std::abs(det) > best)
+                                    {
+                                        best = std::abs(det);
+                                        s0 = j0;
+                                        s1 = j1;
+                                    }
+                                }
+                            if (best >= tol)
+                            {
+                                const Real a00 = global_to_local(eq0, s0), a01 = global_to_local(eq0, s1);
+                                const Real a10 = global_to_local(eq1, s0), a11 = global_to_local(eq1, s1);
+                                const Real det = a00 * a11 - a01 * a10;
+                                const Real inv[2][2] = {{a11 / det, -a01 / det}, {-a10 / det, a00 / det}};
+                                const unsigned int slaves[2] = {s0, s1};
+                                for (unsigned int k = 0; k < 2; ++k)
+                                {
+                                    ConstraintRow row;
+                                    for (unsigned int j = 0; j < 3; ++j)
+                                    {
+                                        if (j == s0 || j == s1 || g[j] < 0)
+                                            continue;
+                                        row.masters.emplace_back(
+                                            g[j], -(inv[k][0] * global_to_local(eq0, j) + inv[k][1] * global_to_local(eq1, j)));
+                                    }
+                                    row.value = inv[k][0] * values[eq0] + inv[k][1] * values[eq1];
+                                    add(slaves[k], row);
+                                }
+                                handled = true;
+                            }
+                        }
+                    }
+                    if (handled)
+                        continue;
+
+                    for (unsigned int i = 0; i < 3; ++i)
+                    {
+                        if (std::isnan(values[i]))
+                            continue;
+                        unsigned int pivot = i;
+                        Real pivot_coeff = global_to_local(i, pivot);
+                        if (g[pivot] < 0 || std::abs(pivot_coeff) < tol)
+                        {
+                            Real best = 0.0;
+                            for (unsigned int j = 0; j < 3; ++j)
+                                if (g[j] >= 0 && std::abs(global_to_local(i, j)) > best)
+                                {
+                                    best = std::abs(global_to_local(i, j));
+                                    pivot_coeff = global_to_local(i, j);
+                                    pivot = j;
+                                }
+                        }
+                        if (g[pivot] < 0 || std::abs(pivot_coeff) < tol)
+                            continue;
+                        ConstraintRow row;
+                        for (unsigned int j = 0; j < 3; ++j)
+                            if (j != pivot && g[j] >= 0)
+                                row.masters.emplace_back(g[j], -global_to_local(i, j) / pivot_coeff);
+                        row.value = values[i] / pivot_coeff;
+                        add(pivot, row);
                     }
                 }
-                if (!complete)
-                    continue;
+            }
+            return rows;
+        }
 
-                const TensorValue<Real> first_local_to_global =
-                    get_local_to_global_for_node(
-                        node_rotations,
-                        static_cast<dof_id_type>(node_first->id()),
-                        "Coupling constraint master rotation");
-                const TensorValue<Real> first_global_to_local =
-                    TensorValue<Real>(first_local_to_global.transpose());
+        // ---- DOF couplings ----------------------------------------------------------------------------------------
 
-                const TensorValue<Real> second_local_to_global =
-                    get_local_to_global_for_node(
-                        node_rotations,
-                        static_cast<dof_id_type>(node_second->id()),
-                        "Coupling constraint slave rotation");
+        /** @brief The variables a coupling of @p label couples: the variable of that label, or those of the field. */
+        std::vector<unsigned int> coupled_variables(const fem::DofSpace &dofs, const std::string &label)
+        {
+            const int exact = dofs.variable_number(label);
+            if (exact >= 0)
+                return {static_cast<unsigned int>(exact)};
+            std::vector<std::pair<unsigned int, unsigned int>> matches; // (component, variable)
+            for (unsigned int v = 0; v < dofs.n_vars(); ++v)
+                if (registry::info(dofs.variable(v).id).api_label == label)
+                    matches.emplace_back(dofs.variable(v).components[0], v);
+            if (matches.empty())
+                fail("Dof couplings: '" + label + "' is not a variable of the DOF system.");
+            std::sort(matches.begin(), matches.end());
+            std::vector<unsigned int> out;
+            for (const auto &m : matches)
+                out.push_back(m.second);
+            return out;
+        }
 
-                const TensorValue<Real> transform =
-                    TensorValue<Real>(second_local_to_global * first_global_to_local);
-
-                // A planar field has no z: the transform between the frames of the pair can only turn about z.
-                if (planar && !is_rotation_about_z(transform))
+        /**
+         * @brief Whether the edge DOFs of two coupled midside points have the same orientation: the CP labels of the end
+         * points (in the orientation of the DOFs, lexicographic) must match directly or reversed.
+         */
+        bool same_edge_orientation(const fem::FEMesh &mesh, const std::unordered_map<std::int64_t, int> &cp_of_point,
+                                   int cp_id, std::int64_t master, std::int64_t slave)
+        {
+            std::int64_t m0, m1, s0, s1;
+            if (!mesh.edge_corners(master, m0, m1) || !mesh.edge_corners(slave, s0, s1))
+                return true;
+            const auto greater = [&mesh](std::int64_t a, std::int64_t b)
+            {
+                const double *p = mesh.point(a), *q = mesh.point(b);
+                for (int i = 0; i < 3; ++i)
                 {
-                    std::ostringstream msg;
-                    msg << "Coupling constraint: the local frames of master node " << node_first->id()
-                        << " and slave node " << node_second->id() << " differ by more than a rotation about z, "
-                        << "but the vector field '" << vec_entry.first
-                        << "' has only the in-plane components x, y there (2D elements).";
-                    pytec3d::logging::error_and_abort(msg.str());
+                    if (p[i] > q[i])
+                        return true;
+                    if (p[i] < q[i])
+                        return false;
                 }
+                return false;
+            };
+            // The corners ordered larger first: the order in which the CP labels of the two edges are compared.
+            const auto order = [&](std::int64_t a, std::int64_t b) { return greater(a, b) ? std::array<std::int64_t, 2>{a, b}
+                                                                                           : std::array<std::int64_t, 2>{b, a}; };
+            const auto mc = order(m0, m1), sc = order(s0, s1);
+            const auto cp_of = [&](std::int64_t p)
+            {
+                const auto it = cp_of_point.find(p);
+                return it == cp_of_point.end() ? 0 : it->second;
+            };
+            const std::array<int, 3> mt = {cp_of(mc[0]), cp_of(master), cp_of(mc[1])};
+            const std::array<int, 3> st = {cp_of(sc[0]), cp_of(slave), cp_of(sc[1])};
+            std::ostringstream where;
+            where << "CP_ID=" << cp_id << " (master midside node " << master << ", slave midside node " << slave << ")";
+            if ((mt[0] != 0) + (mt[2] != 0) == 0 && (st[0] != 0) + (st[2] != 0) == 0)
+                fail("Coupling constraint: unable to infer the edge orientation because no corner CP label was found for "
+                     "either edge in " + where.str() + ".");
+            std::array<int, 3> ms = mt, ss = st;
+            std::sort(ms.begin(), ms.end());
+            std::sort(ss.begin(), ss.end());
+            if (ms != ss)
+                fail("Coupling constraint: incompatible edge CP token triplets for " + where.str() + ".");
+            const bool direct = mt[0] == st[0] && mt[1] == st[1] && mt[2] == st[2];
+            const bool reversed = mt[0] == st[2] && mt[1] == st[1] && mt[2] == st[0];
+            const bool direct_ok = !((mt[0] == 0 && st[0] == 0 && mc[0] != sc[0]) || (mt[2] == 0 && st[2] == 0 && mc[1] != sc[1]));
+            const bool reversed_ok = !((mt[0] == 0 && st[2] == 0 && mc[0] != sc[1]) || (mt[2] == 0 && st[0] == 0 && mc[1] != sc[0]));
+            if (!(direct && direct_ok) && !(reversed && reversed_ok))
+                fail("Coupling constraint: unable to infer the edge orientation from CP tokens/coordinates for " + where.str() +
+                     ". If CP is missing on matched corners, the missing-CP corners must be the same node.");
+            return direct && direct_ok;
+        }
 
-                for (unsigned int i = 0; i < n_field_components; ++i)
+        RowMap coupling_constraints(const ConstraintInputs &in)
+        {
+            RowMap rows;
+            const fem::DofSpace &dofs = *in.dofs;
+            if (!in.couplings || in.couplings->empty() || !in.pairs || in.pairs->empty())
+                return rows;
+            const MPI_Comm comm = in.mesh->comm();
+
+            // The global DOFs of the coupled points, from the ranks that have them: (point, variable, component, dof).
+            std::set<std::int64_t> points;
+            for (const DofCoupling &coupling : *in.couplings)
+            {
+                const auto it = in.pairs->find(coupling.cp_id);
+                if (it == in.pairs->end())
+                    continue;
+                for (const auto &[a, b] : it->second)
                 {
-                    ConstraintEntry constraint_entry;
-                    for (unsigned int j = 0; j < n_field_components; ++j)
-                        constraint_entry.row[dofs_first[j]] =
-                            transform(i, j);
-                    constraints.emplace(dofs_second[i], constraint_entry);
+                    points.insert(a);
+                    points.insert(b);
                 }
             }
-
-            for (const auto &label : coupled_labels)
-            {
-                const unsigned int sys_num = system.number();
-                const unsigned int var_num = system.variable_number(label);
-                if (var_num >= node_first->n_vars(sys_num) ||
-                    var_num >= node_second->n_vars(sys_num) ||
-                    node_first->n_dofs(sys_num, var_num) == 0 ||
-                    node_second->n_dofs(sys_num, var_num) == 0)
-                    continue;
-
-                const dof_id_type dof_first = node_first->dof_number(sys_num, var_num, 0);
-                const dof_id_type dof_second = node_second->dof_number(sys_num, var_num, 0);
-
-                ConstraintEntry constraint_entry;
-                bool same_edge_orientation = true;
-                if (VariablesMap::is_edge_variable(system, var_num))
-                {
-                    if (_edge_orientations_map)
+            std::vector<long long> known;
+            for (const std::int64_t p : points)
+                for (unsigned int v = 0; v < dofs.n_vars(); ++v)
+                    for (unsigned int c = 0; c < static_cast<unsigned int>(dofs.variable(v).vdim); ++c)
                     {
-                        const auto orientation_it = _edge_orientations_map->find(
-                            std::make_pair(static_cast<dof_id_type>(node_first->id()),
-                                           static_cast<dof_id_type>(node_second->id())));
-                        if (orientation_it != _edge_orientations_map->end())
-                            same_edge_orientation = orientation_it->second;
+                        const PetscInt g = global_dof(dofs, v, p, c);
+                        if (g >= 0)
+                            known.insert(known.end(), {static_cast<long long>(p), v, c, static_cast<long long>(g)});
                     }
-                    constraint_entry.row[dof_first] = same_edge_orientation ? 1.0 : -1.0;
-                }
-                else
-                    constraint_entry.row[dof_first] = 1.0;
-                constraints.emplace(dof_second, constraint_entry);
-            }
-        }
-    }
-
-    return constraints;
-}
-
-template <typename ImplSystem>
-void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
-{
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
-    System &system = *dof_system;
-    // The CPs that couple an H(curl) variable: its DOFs carry an edge orientation.
-    _edge_coupling_cp_ids.clear();
-    const std::size_t n_entries = std::min(_coupling_cp_id_values.size(), _coupling_variable_values.size());
-    for (std::size_t i = 0; i < n_entries; ++i)
-    {
-        if (_coupling_variable_values[i].empty())
-            continue;
-        for (const auto &label : VariablesMap::get_global_labels_for_label(system, _coupling_variable_values[i]))
-            if (VariablesMap::is_edge_variable(system, system.variable_number(label)))
-                _edge_coupling_cp_ids.insert(_coupling_cp_id_values[i]);
-    }
-    if (_edge_coupling_cp_ids.empty())
-    {
-        _edge_orientations_map.reset();
-        return;
-    }
-
-    if (!_edge_orientations_map)
-        _edge_orientations_map =
-            std::make_unique<std::map<std::pair<dof_id_type, dof_id_type>, bool>>();
-    else
-        _edge_orientations_map->clear();
-
-    auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    auto *solver = &equation_systems.model();
-
-    const auto *coupling_functor = solver->get_coupling_functor();
-    const auto &pairs_by_cp = coupling_functor->cp_pairs_by_cp;
-    if (pairs_by_cp.empty())
-        return;
-
-    const MeshBase &mesh = equation_systems.get_mesh();
-    const unsigned int proc_id = mesh.comm().rank();
-
-    struct EdgeInfo
-    {
-        dof_id_type corner0 = libMesh::invalid_uint;
-        dof_id_type corner1 = libMesh::invalid_uint;
-    };
-    std::unordered_map<dof_id_type, EdgeInfo> edge_info_by_midside_node;
-
-    // Build edge-corner lookup on the distributed mesh view (owned + ghosted elements).
-    for (const auto *elem : mesh.element_ptr_range())
-    {
-        for (const auto edge_idx : elem->edge_index_range())
-        {
-            const unsigned int corner0_local = elem->local_edge_node(edge_idx, 0);
-            const unsigned int corner1_local = elem->local_edge_node(edge_idx, 1);
-            const dof_id_type corner0 = static_cast<dof_id_type>(elem->node_id(corner0_local));
-            const dof_id_type corner1 = static_cast<dof_id_type>(elem->node_id(corner1_local));
-
-            const auto local_nodes_on_edge = elem->nodes_on_edge(edge_idx);
-            for (const unsigned int local_node_idx : local_nodes_on_edge)
+            int n_ranks = 1;
+            MPI_Comm_size(comm, &n_ranks);
+            int count = static_cast<int>(known.size());
+            std::vector<int> counts(static_cast<std::size_t>(n_ranks)), displs(static_cast<std::size_t>(n_ranks), 0);
+            MPI_Allgather(&count, 1, MPI_INT, counts.data(), 1, MPI_INT, comm);
+            for (int r = 1; r < n_ranks; ++r)
+                displs[static_cast<std::size_t>(r)] = displs[static_cast<std::size_t>(r) - 1] + counts[static_cast<std::size_t>(r) - 1];
+            std::vector<long long> all(static_cast<std::size_t>(displs.back() + counts.back()));
+            MPI_Allgatherv(known.data(), count, MPI_LONG_LONG, all.data(), counts.data(), displs.data(), MPI_LONG_LONG, comm);
+            std::map<std::tuple<long long, long long, long long>, PetscInt> dof_of;
+            for (std::size_t i = 0; i + 3 < all.size(); i += 4)
+                dof_of.emplace(std::make_tuple(all[i], all[i + 1], all[i + 2]), static_cast<PetscInt>(all[i + 3]));
+            const auto lookup = [&](std::int64_t p, unsigned int v, unsigned int c) -> PetscInt
             {
-                if (elem->is_vertex(local_node_idx))
+                const auto it = dof_of.find(std::make_tuple(static_cast<long long>(p), static_cast<long long>(v),
+                                                            static_cast<long long>(c)));
+                return it == dof_of.end() ? -1 : it->second;
+            };
+            const auto owned = [&](PetscInt g) { return g >= dofs.first_owned() && g < dofs.first_owned() + dofs.n_owned(); };
+
+            // The CP label of each point of a pair (the first set, by id), for the orientation of edge DOFs.
+            std::unordered_map<std::int64_t, int> cp_of_point;
+            for (const auto &[cp, pairs] : *in.pairs)
+                for (const auto &[a, b] : pairs)
+                {
+                    cp_of_point.emplace(a, cp);
+                    cp_of_point.emplace(b, cp);
+                }
+
+            for (const DofCoupling &coupling : *in.couplings)
+            {
+                if (coupling.variable.empty())
                     continue;
-
-                const auto node_id =
-                    static_cast<dof_id_type>(elem->node_id(local_node_idx));
-                edge_info_by_midside_node.emplace(node_id, EdgeInfo{corner0, corner1});
+                const auto it = in.pairs->find(coupling.cp_id);
+                if (it == in.pairs->end() || it->second.empty())
+                    continue;
+                const std::vector<unsigned int> variables = coupled_variables(dofs, coupling.variable);
+                for (const auto &[master, slave] : it->second)
+                    for (const unsigned int v : variables)
+                    {
+                        const fem::Variable &variable = dofs.variable(v);
+                        if (variable.vector_lagrange())
+                        {
+                            const unsigned int n = static_cast<unsigned int>(variable.vdim);
+                            std::array<PetscInt, 3> first = {-1, -1, -1}, second = {-1, -1, -1};
+                            bool complete = true;
+                            for (unsigned int c = 0; c < n; ++c)
+                            {
+                                first[c] = lookup(master, v, c);
+                                second[c] = lookup(slave, v, c);
+                                complete = complete && first[c] >= 0 && second[c] >= 0;
+                            }
+                            if (!complete || !owned(second[0]))
+                                continue;
+                            const RealTensorValue transform = rotation_of(in, slave) * rotation_of(in, master).transpose();
+                            if (n == 2 && !is_rotation_about_z(transform))
+                            {
+                                std::ostringstream msg;
+                                msg << "Coupling constraint: the local frames of master node " << master << " and slave node "
+                                    << slave << " differ by more than a rotation about z, but the vector field '"
+                                    << variable.label << "' has only the in-plane components x, y there (2D elements).";
+                                fail(msg.str());
+                            }
+                            for (unsigned int i = 0; i < n; ++i)
+                            {
+                                ConstraintRow row;
+                                for (unsigned int j = 0; j < n; ++j)
+                                    row.masters.emplace_back(first[j], transform(i, j));
+                                sort_row(row);
+                                if (owned(second[i]))
+                                    rows.emplace(second[i], row);
+                            }
+                            continue;
+                        }
+                        const PetscInt first = lookup(master, v, 0);
+                        const PetscInt second = lookup(slave, v, 0);
+                        if (first < 0 || second < 0 || !owned(second))
+                            continue;
+                        const double sign =
+                            variable.edge() && !same_edge_orientation(*in.mesh, cp_of_point, coupling.cp_id, master, slave) ? -1.0 : 1.0;
+                        ConstraintRow row;
+                        row.masters.emplace_back(first, sign);
+                        rows.emplace(second, row);
+                    }
             }
-        }
-    }
-
-    // Build a per-node CP label map from the already assembled CP pairs.
-    // Missing labels are treated as 0 during orientation inference.
-    std::unordered_map<dof_id_type, int> node_cp_label;
-    for (const auto &cp_entry : pairs_by_cp)
-    {
-        const int cp_label = cp_entry.first;
-        for (const auto &cp_pair : cp_entry.second)
-        {
-            node_cp_label.emplace(cp_pair.first, cp_label);
-            node_cp_label.emplace(cp_pair.second, cp_label);
-        }
-    }
-
-    const auto cp_of = [&node_cp_label](const dof_id_type node_id) -> int
-    {
-        const auto it = node_cp_label.find(node_id);
-        return it == node_cp_label.end() ? 0 : it->second;
-    };
-
-    const auto order_corners_by_point =
-        [&mesh](const dof_id_type c0, const dof_id_type c1) -> std::array<dof_id_type, 2>
-    {
-        const Node *n0 = mesh.query_node_ptr(c0);
-        const Node *n1 = mesh.query_node_ptr(c1);
-        if (!n0 || !n1)
-        {
-            std::ostringstream msg;
-            msg << "Coupling constraint: missing corner node while ordering edge corners by coordinates ("
-                << c0 << ", " << c1 << ").";
-            pytec3d::logging::error_and_abort(msg.str());
+            return rows;
         }
 
-        // Match libMesh positive-edge-orientation style: compare Point coordinates.
-        const Point &p0 = *n0;
-        const Point &p1 = *n1;
-        return (p0 > p1)
-                   ? std::array<dof_id_type, 2>{c0, c1}
-                   : std::array<dof_id_type, 2>{c1, c0};
-    };
+        // ---- the pins of static steps -----------------------------------------------------------------------------
 
-    for (const int cp_id : _edge_coupling_cp_ids)
-    {
-        const auto cp_it = pairs_by_cp.find(cp_id);
-        if (cp_it == pairs_by_cp.end())
-            continue;
-
-        const auto &cp_pairs = cp_it->second;
-
-        for (const auto &pair : cp_pairs)
+        RowMap static_constraints(const ConstraintInputs &in)
         {
-            const Node *slave_node = mesh.query_node_ptr(pair.second);
-            if (!slave_node || slave_node->processor_id() != proc_id)
-                continue;
-
-            const Node *master_node = mesh.query_node_ptr(pair.first);
-            if (!master_node)
+            RowMap rows;
+            if (!in.static_step)
+                return rows;
+            const fem::DofSpace &dofs = *in.dofs;
+            const fem::FEMesh &mesh = *in.mesh;
+            fem::FECatalog const &catalog = dofs.catalog();
+            std::vector<int> with(dofs.n_local(), 0), without(dofs.n_local(), 0);
+            for (int e = 0; e < mesh.n_local_elements(); ++e)
             {
-                std::ostringstream msg;
-                msg << "Coupling constraint: slave node " << pair.second
-                    << " found without master node " << pair.first
-                    << ".";
-                pytec3d::logging::error_and_abort(msg.str());
-            }
-
-            bool same_edge_orientation = true;
-            const auto master_it = edge_info_by_midside_node.find(pair.first);
-            const auto slave_it = edge_info_by_midside_node.find(pair.second);
-            if (master_it != edge_info_by_midside_node.end() &&
-                slave_it != edge_info_by_midside_node.end())
-            {
-                const std::array<dof_id_type, 2> master_corners = order_corners_by_point(
-                    master_it->second.corner0,
-                    master_it->second.corner1);
-                const std::array<dof_id_type, 2> slave_corners = order_corners_by_point(
-                    slave_it->second.corner0,
-                    slave_it->second.corner1);
-
-                std::array<int, 3> master_tokens = {
-                    cp_of(master_corners[0]),
-                    cp_of(pair.first),
-                    cp_of(master_corners[1]),
-                };
-                std::array<int, 3> slave_tokens = {
-                    cp_of(slave_corners[0]),
-                    cp_of(pair.second),
-                    cp_of(slave_corners[1]),
-                };
-
-                const int master_corner_cp_count =
-                    static_cast<int>(master_tokens[0] != 0) +
-                    static_cast<int>(master_tokens[2] != 0);
-                const int slave_corner_cp_count =
-                    static_cast<int>(slave_tokens[0] != 0) +
-                    static_cast<int>(slave_tokens[2] != 0);
-                if (master_corner_cp_count == 0 && slave_corner_cp_count == 0)
+                const ModelElementTypes::Entry &entry = in.element_types->get(mesh.subdomain(e));
+                const ElementType &type = *entry.type;
+                const int *local = nullptr;
+                const double *sign = nullptr;
+                unsigned int n = 0;
+                dofs.element_dofs(e, local, sign, n);
+                const MeshElement element{&mesh, &catalog, nullptr, nullptr, e};
+                const auto indices = type.element_indices(dofs, element, FieldKind::Dof, entry.domain);
+                for (std::size_t field = 0; field < type.spec().fields.size(); ++field)
                 {
-                    std::ostringstream msg;
-                    msg << "Coupling constraint: unable to infer the edge orientation because "
-                        << "no corner CP label was found for either edge in CP_ID="
-                        << cp_id << " (master midside node " << pair.first
-                        << ", slave midside node " << pair.second << ").";
-                    pytec3d::logging::error_and_abort(msg.str());
+                    const FieldSpec &spec = type.field(field);
+                    if (spec.kind != FieldKind::Dof || !ElementType::active(spec, entry.domain))
+                        continue;
+                    auto &target = type.has_stiffness(field, entry.domain) ? with : without;
+                    const ElementType::FieldRange &range = indices.field[field];
+                    for (unsigned int i = 0; i < range.count; ++i)
+                        target[static_cast<std::size_t>(local[range[i]])] = 1;
                 }
-
-                std::array<int, 3> master_cp_sorted = master_tokens;
-                std::array<int, 3> slave_cp_sorted = slave_tokens;
-                std::sort(master_cp_sorted.begin(), master_cp_sorted.end());
-                std::sort(slave_cp_sorted.begin(), slave_cp_sorted.end());
-                if (master_cp_sorted != slave_cp_sorted)
-                {
-                    std::ostringstream msg;
-                    msg << "Coupling constraint: incompatible edge CP token triplets for CP_ID="
-                        << cp_id << " (master midside node " << pair.first
-                        << ", slave midside node " << pair.second << ").";
-                    pytec3d::logging::error_and_abort(msg.str());
-                }
-
-                const bool direct_match =
-                    (master_tokens[0] == slave_tokens[0]) &&
-                    (master_tokens[1] == slave_tokens[1]) &&
-                    (master_tokens[2] == slave_tokens[2]);
-                const bool reversed_match =
-                    (master_tokens[0] == slave_tokens[2]) &&
-                    (master_tokens[1] == slave_tokens[1]) &&
-                    (master_tokens[2] == slave_tokens[0]);
-
-                const bool direct_missing_ok =
-                    !((master_tokens[0] == 0 && slave_tokens[0] == 0 && master_corners[0] != slave_corners[0]) ||
-                      (master_tokens[2] == 0 && slave_tokens[2] == 0 && master_corners[1] != slave_corners[1]));
-                const bool reversed_missing_ok =
-                    !((master_tokens[0] == 0 && slave_tokens[2] == 0 && master_corners[0] != slave_corners[1]) ||
-                      (master_tokens[2] == 0 && slave_tokens[0] == 0 && master_corners[1] != slave_corners[0]));
-
-                const bool direct_valid = direct_match && direct_missing_ok;
-                const bool reversed_valid = reversed_match && reversed_missing_ok;
-
-                if (!direct_valid && !reversed_valid)
-                {
-                    std::ostringstream msg;
-                    msg << "Coupling constraint: unable to infer the edge orientation from CP tokens/coordinates for CP_ID="
-                        << cp_id << " (master midside node " << pair.first
-                        << ", slave midside node " << pair.second
-                        << "). If CP is missing on matched corners, the missing-CP corners must be the same node.";
-                    pytec3d::logging::error_and_abort(msg.str());
-                }
-
-                same_edge_orientation = direct_valid;
             }
-
-            (*_edge_orientations_map)[std::make_pair(pair.first, pair.second)] =
-                same_edge_orientation;
+            dofs.reduce_or(with);
+            dofs.reduce_or(without);
+            for (std::size_t l = 0; l < dofs.n_local(); ++l)
+                if (without[l] && !with[l] && dofs.owned(l))
+                    rows.emplace(dofs.global(l), ConstraintRow{});
+            return rows;
         }
-    }
-}
 
-template <typename ImplSystem>
-void GlobalConstraintsObject<ImplSystem>::constrain()
-{
-    if (!system_.is_initialized())
-        return;
-
-    if (VariablesMap::has_edge_variable(system_) &&
-        (_edge_orientations_map == nullptr || _edge_orientations_map->empty()))
-        build_edge_orientations_map();
-
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
-    const auto *time_step = dof_system->current_time_step();
-    const bool time_step_updated = !time_step || time_step->updated;
-
-    if (!time_step_updated && _has_constraint_cache)
-    {
-        pytec3d::logging::info("Reusing cached DOF constraints (time step unchanged)");
-        DofMap &dof_map = system_.get_dof_map();
-        for (const auto &entry : _constraint_cache)
+        /** @brief All the rows of all the ranks, on every rank. */
+        ConstraintSet gather(const RowMap &rows, MPI_Comm comm)
         {
-            if (!dof_map.is_constrained_dof(entry.first))
-                dof_map.add_constraint_row(entry.first, entry.second.row, entry.second.value, true);
-        }
-        return;
-    }
-
-    System &system = system_;
-    DofMap &dof_map = system_.get_dof_map();
-    pytec3d::logging::info("Computing nodal DOF constraints");
-
-    const unsigned int n_vars = system.n_vars();
-    const auto dof_to_var_idx = build_dof_to_variable_index_map(system);
-    std::vector<std::size_t> total_constraints_per_variable(n_vars, 0);
-    std::vector<std::size_t> applied_constraints_per_variable(n_vars, 0);
-    std::size_t unknown_total_constraints = 0;
-    std::size_t unknown_applied_constraints = 0;
-
-    const auto count_total_for_dof = [&dof_to_var_idx,
-                                      &total_constraints_per_variable,
-                                      &unknown_total_constraints](const dof_id_type dof)
-    {
-        const auto it = dof_to_var_idx.find(dof);
-        if (it == dof_to_var_idx.end())
-        {
-            ++unknown_total_constraints;
-            return;
-        }
-        ++total_constraints_per_variable[it->second];
-    };
-
-    const auto count_applied_for_dof = [&dof_to_var_idx,
-                                        &applied_constraints_per_variable,
-                                        &unknown_applied_constraints](const dof_id_type dof)
-    {
-        const auto it = dof_to_var_idx.find(dof);
-        if (it == dof_to_var_idx.end())
-        {
-            ++unknown_applied_constraints;
-            return;
-        }
-        ++applied_constraints_per_variable[it->second];
-    };
-
-    std::unordered_map<dof_id_type, ConstraintEntry> constraints;
-    const auto add_or_update_constraint = [&constraints,
-                                           &count_total_for_dof](const dof_id_type dof,
-                                                                 const ConstraintEntry &entry)
-    {
-        const auto insert_result = constraints.emplace(dof, entry);
-        if (!insert_result.second)
-        {
-            insert_result.first->second = entry;
-            return;
-        }
-        count_total_for_dof(dof);
-    };
-
-    auto coupling_constraints = build_coupling_constraints();
-    for (const auto &entry : coupling_constraints)
-        add_or_update_constraint(entry.first, entry.second);
-
-    auto point_constraints = build_point_constraints();
-    std::size_t overridden_couplings = 0;
-    for (const auto &entry : point_constraints)
-    {
-        if (constraints.find(entry.first) != constraints.end() &&
-            coupling_constraints.find(entry.first) != coupling_constraints.end())
-        {
-            ++overridden_couplings;
-            const auto owner_it = this->_point_constraint_owner_cache.find(entry.first);
-            if (owner_it != this->_point_constraint_owner_cache.end())
+            // Serialized: dof, value, n masters, then (master, coefficient) pairs; doubles hold the indices exactly.
+            std::vector<double> mine;
+            for (const auto &[dof, row] : rows)
             {
-                pytec3d::logging::warn(
-                    "Point constraint overrides coupling constraint (node={}, variable={}, dof={})",
-                    owner_it->second.node_id,
-                    owner_it->second.variable,
-                    entry.first);
+                mine.push_back(static_cast<double>(dof));
+                mine.push_back(row.value);
+                mine.push_back(static_cast<double>(row.masters.size()));
+                for (const auto &[m, c] : row.masters)
+                {
+                    mine.push_back(static_cast<double>(m));
+                    mine.push_back(c);
+                }
             }
-            else
+            int n_ranks = 1;
+            MPI_Comm_size(comm, &n_ranks);
+            int count = static_cast<int>(mine.size());
+            std::vector<int> counts(static_cast<std::size_t>(n_ranks)), displs(static_cast<std::size_t>(n_ranks), 0);
+            MPI_Allgather(&count, 1, MPI_INT, counts.data(), 1, MPI_INT, comm);
+            for (int r = 1; r < n_ranks; ++r)
+                displs[static_cast<std::size_t>(r)] = displs[static_cast<std::size_t>(r) - 1] + counts[static_cast<std::size_t>(r) - 1];
+            std::vector<double> all(static_cast<std::size_t>(displs.back() + counts.back()));
+            MPI_Allgatherv(mine.data(), count, MPI_DOUBLE, all.data(), counts.data(), displs.data(), MPI_DOUBLE, comm);
+            ConstraintSet set;
+            for (std::size_t i = 0; i < all.size();)
             {
-                pytec3d::logging::warn(
-                    "Point constraint overrides coupling constraint (node=<unknown>, variable=<unknown>, dof={})",
-                    entry.first);
+                const auto dof = static_cast<PetscInt>(all[i]);
+                ConstraintRow row;
+                row.value = all[i + 1];
+                const auto n = static_cast<std::size_t>(all[i + 2]);
+                i += 3;
+                for (std::size_t k = 0; k < n; ++k, i += 2)
+                    row.masters.emplace_back(static_cast<PetscInt>(all[i]), all[i + 1]);
+                set.emplace(dof, std::move(row));
+            }
+            return set;
+        }
+    } // namespace
+
+    CouplingPairs coupling_pairs(const ModelArrays &arrays, std::size_t n_points)
+    {
+        std::map<int, std::vector<std::int64_t>> sets;
+        for (std::size_t p = 0; p < n_points; ++p)
+            for (const auto &[name, array] : arrays.couplings)
+            {
+                (void)name;
+                const int cp = array(p);
+                if (cp > 0)
+                    sets[cp].push_back(static_cast<std::int64_t>(p));
+            }
+        CouplingPairs pairs;
+        for (const auto &[cp, points] : sets)
+        {
+            const std::int64_t master = *std::min_element(points.begin(), points.end());
+            auto &list = pairs[cp];
+            for (const std::int64_t p : points)
+                if (p != master)
+                    list.emplace_back(master, p);
+        }
+        return pairs;
+    }
+
+    ConstraintSet build_constraints(const ConstraintInputs &in)
+    {
+        logging::info("Computing nodal DOF constraints");
+        const fem::DofSpace &dofs = *in.dofs;
+        const MPI_Comm comm = in.mesh->comm();
+
+        const RowMap couplings = coupling_constraints(in);
+        const RowMap points = point_constraints(in);
+        const RowMap pins = static_constraints(in);
+
+        RowMap rows = couplings;
+        std::size_t overridden = 0;
+        for (const auto &[dof, row] : points)
+        {
+            if (couplings.count(dof))
+            {
+                ++overridden;
+                logging::warn("Point constraint overrides coupling constraint (dof={})", dof);
+            }
+            rows[dof] = row;
+        }
+        for (const auto &[dof, row] : pins)
+            if (!points.count(dof))
+                rows[dof] = row; // A Dirichlet value wins over the pin of a DOF without stiffness.
+        (void)overridden;
+
+        // The summary: counts per source and per variable, all ranks.
+        std::vector<std::size_t> per_variable(dofs.n_vars(), 0);
+        {
+            // The variable of an owned global DOF: the variable blocks of this rank are consecutive.
+            std::vector<PetscInt> first(dofs.n_vars() + 1, dofs.first_owned());
+            std::vector<PetscInt> counts(dofs.n_vars(), 0);
+            for (std::size_t l = 0; l < dofs.n_local(); ++l)
+                if (dofs.owned(l))
+                    ++counts[dofs.variable_of(l)];
+            for (unsigned int v = 0; v < dofs.n_vars(); ++v)
+                first[v + 1] = first[v] + counts[v];
+            for (const auto &[dof, row] : rows)
+            {
+                (void)row;
+                const auto it = std::upper_bound(first.begin(), first.end(), dof);
+                const auto v = static_cast<std::size_t>(std::distance(first.begin(), it)) - 1;
+                if (v < per_variable.size())
+                    ++per_variable[v];
             }
         }
-        add_or_update_constraint(entry.first, entry.second);
+        std::array<unsigned long long, 4> totals = {pins.size(), points.size(), couplings.size(), rows.size()};
+        MPI_Allreduce(MPI_IN_PLACE, totals.data(), 4, MPI_UNSIGNED_LONG_LONG, MPI_SUM, comm);
+        std::vector<unsigned long long> per_variable_all(per_variable.begin(), per_variable.end());
+        MPI_Allreduce(MPI_IN_PLACE, per_variable_all.data(), static_cast<int>(per_variable_all.size()), MPI_UNSIGNED_LONG_LONG,
+                      MPI_SUM, comm);
+        std::vector<report::ConstraintVariableStat> stats;
+        for (unsigned int v = 0; v < dofs.n_vars(); ++v)
+            if (per_variable_all[v] > 0)
+                stats.push_back({dofs.variable(v).label, per_variable_all[v], per_variable_all[v]});
+        std::sort(stats.begin(), stats.end(), [](const auto &a, const auto &b)
+                  { return a.total_count != b.total_count ? a.total_count > b.total_count : a.variable_name < b.variable_name; });
+        logging::table_root(report::format_constraints_summary_table(totals[0], totals[1], totals[2], totals[3], totals[3],
+                                                                     stats, 0, 0));
+        return gather(rows, comm);
     }
-
-    auto time_integration_constraints = build_time_integration_constraints();
-    for (const auto &entry : time_integration_constraints)
-    {
-        // A Dirichlet value wins: a DOF without stiffness in a static step may be given (e.g. a coil as T fixed on the
-        // edges of a CUT_LAYER, T-phi).
-        if (point_constraints.count(entry.first))
-            continue;
-        ConstraintEntry forced_zero = entry.second;
-        forced_zero.row.clear();
-        forced_zero.value = 0.0;
-        add_or_update_constraint(entry.first, forced_zero);
-    }
-
-    std::size_t applied_constraints = 0;
-    for (const auto &entry : constraints)
-    {
-        if (dof_map.is_constrained_dof(entry.first))
-            continue;
-        dof_map.add_constraint_row(entry.first, entry.second.row, entry.second.value, true);
-        ++applied_constraints;
-        count_applied_for_dof(entry.first);
-    }
-
-    const auto &comm = dof_map.comm();
-    std::size_t global_time_integration_constraints = time_integration_constraints.size();
-    std::size_t global_point_constraints = point_constraints.size();
-    std::size_t global_coupling_constraints = coupling_constraints.size();
-    std::size_t global_total_constraints = constraints.size();
-    std::size_t global_applied_constraints = applied_constraints;
-    for (unsigned int var_idx = 0; var_idx < n_vars; ++var_idx)
-    {
-        comm.sum(total_constraints_per_variable[var_idx]);
-        comm.sum(applied_constraints_per_variable[var_idx]);
-    }
-    comm.sum(unknown_total_constraints);
-    comm.sum(unknown_applied_constraints);
-    comm.sum(global_time_integration_constraints);
-    comm.sum(global_point_constraints);
-    comm.sum(global_coupling_constraints);
-    comm.sum(global_total_constraints);
-    comm.sum(global_applied_constraints);
-
-    std::vector<pytec3d::report::ConstraintVariableStat> variable_stats;
-    variable_stats.reserve(n_vars);
-    for (unsigned int var_idx = 0; var_idx < n_vars; ++var_idx)
-    {
-        const std::size_t total_count = total_constraints_per_variable[var_idx];
-        const std::size_t applied_count = applied_constraints_per_variable[var_idx];
-        if (total_count == 0 && applied_count == 0)
-            continue;
-        variable_stats.push_back({system.variable_name(var_idx), total_count, applied_count});
-    }
-    std::sort(variable_stats.begin(), variable_stats.end(),
-              [](const pytec3d::report::ConstraintVariableStat &lhs,
-                 const pytec3d::report::ConstraintVariableStat &rhs)
-              {
-                  if (lhs.total_count != rhs.total_count)
-                      return lhs.total_count > rhs.total_count;
-                  return lhs.variable_name < rhs.variable_name;
-              });
-
-    // Cache constraints for reuse in subsequent Picard iterations at the same time step.
-    _constraint_cache.clear();
-    _constraint_cache.insert(constraints.begin(), constraints.end());
-    _has_constraint_cache = true;
-
-    pytec3d::logging::table_root(pytec3d::report::format_constraints_summary_table(global_time_integration_constraints,
-                                                                                    global_point_constraints,
-                                                                                    global_coupling_constraints,
-                                                                                    global_total_constraints,
-                                                                                    global_applied_constraints,
-                                                                                    variable_stats,
-                                                                                    unknown_total_constraints,
-                                                                                    unknown_applied_constraints));
-}
-
-template <typename ImplSystem>
-bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
-{
-    DofMap &dof_map = system_.get_dof_map();
-    const auto &comm = dof_map.comm();
-
-    // Swap to bring the old constraints to the front
-    dof_map.swap_dof_constraints();
-    const auto constraints_map_old = dof_map.get_dof_constraints();
-
-    // Swap back to bring the new constraints to the front
-    dof_map.swap_dof_constraints();
-    const auto &constraints_map_new = dof_map.get_dof_constraints();
-
-    const auto keys_differ = [&constraints_map_new, &constraints_map_old]() -> bool
-    {
-        const bool has_old = !constraints_map_old.empty();
-        const bool has_new = !constraints_map_new.empty();
-
-        if (!has_old && !has_new)
-            return false;
-
-        if (has_old != has_new)
-            return true;
-
-        if (constraints_map_old.size() != constraints_map_new.size())
-            return true;
-
-        for (const auto &entry : constraints_map_new)
-        {
-            if (!constraints_map_old.count(entry.first))
-                return true;
-        }
-        return false;
-    };
-
-    // The same constrained DOFs: the rows (masters and coefficients) must be the same too.
-    const auto rows_differ = [&constraints_map_new, &constraints_map_old]() -> bool
-    {
-        for (const auto &[dof, row] : constraints_map_new)
-            if (constraints_map_old.at(dof) != row)
-                return true;
-        return false;
-    };
-
-    bool dofs_changed = keys_differ();
-    bool rows_changed = !dofs_changed && rows_differ();
-    if (dofs_changed)
-        pytec3d::logging::info("Boundary conditions update required: constrained DOF set changed");
-    else if (rows_changed)
-        pytec3d::logging::info("Boundary conditions update required: constraint rows changed");
-
-    comm.max(dofs_changed);
-    comm.max(rows_changed);
-
-    if (dofs_changed)
-        system_.delete_rows_cols_constrained_dofs();
-    else if (rows_changed)
-        // Other masters may give another sparsity pattern: a full factorization.
-        system_.reduced_linear_solver().invalidate_pattern();
-
-    return dofs_changed || rows_changed;
-}
-
-template class GlobalConstraintsObject<libMesh::LinearImplicitSystem>;
-template class GlobalConstraintsObject<libMesh::NonlinearImplicitSystem>;
+} // namespace pytec3d

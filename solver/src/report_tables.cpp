@@ -7,16 +7,13 @@
 #include "mesh_quality.h"
 #include "model_element_types.h"
 #include "pytec3d_equation_systems.h"
-#include "pytec3d_system.h"
+#include "dof_space.h"
+#include "dof_system.h"
+#include "fe_mesh.h"
+#include <mfem.hpp>
 #include "solver_configuration.h"
 #include "time_step.h"
 
-#include <libmesh/elem.h>
-#include <libmesh/enum_elem_type.h>
-#include <libmesh/enum_to_string.h>
-#include <libmesh/libmesh_config.h>
-#include <libmesh/mesh_base.h>
-#include <libmesh/mesh_tools.h>
 #include <petscversion.h>
 
 #include <spdlog/fmt/fmt.h>
@@ -52,7 +49,7 @@ namespace
     }
 
     /** @brief "p0=12, p1=10" from per-rank counts. */
-    std::string by_rank(const std::vector<libMesh::dof_id_type> &counts)
+    std::string by_rank(const std::vector<long long> &counts)
     {
         std::vector<std::string> parts;
         for (std::size_t rank = 0; rank < counts.size(); ++rank)
@@ -248,7 +245,7 @@ namespace pytec3d::report
 #elif defined(__GNUC__)
             .row({"Compiler", std::string("GCC ") + __VERSION__})
 #endif
-            .row({"libMesh", LIBMESH_LIB_VERSION})
+            .row({"MFEM", mfem::GetVersionStr()})
             .row({"PETSc", fmt::format("{}.{}.{}", PETSC_VERSION_MAJOR, PETSC_VERSION_MINOR, PETSC_VERSION_SUBMINOR)})
             .row({"Host", std::string(info.host)})
             .row({"MPI ranks", std::to_string(info.ranks)})
@@ -258,54 +255,65 @@ namespace pytec3d::report
 
     // ------------------------------------------------------------------------------------------------- mesh
 
-    std::string format_mesh_summary_table(const libMesh::MeshBase &mesh)
+    std::string format_mesh_summary_table(const fem::FEMesh &mesh)
     {
-        const auto &comm = mesh.comm();
-        std::vector<libMesh::dof_id_type> nodes_by_rank, elements_by_rank;
-        comm.allgather(mesh.n_local_nodes(), nodes_by_rank);
-        comm.allgather(mesh.n_local_elem(), elements_by_rank);
+        const MPI_Comm comm = mesh.comm();
+        const mfem::ParMesh &pmesh = mesh.mesh();
+        std::vector<long long> vertices_by_rank(static_cast<std::size_t>(mesh.n_ranks())),
+            elements_by_rank(static_cast<std::size_t>(mesh.n_ranks()));
+        long long n_vertices = pmesh.GetNV(), n_elements = mesh.n_local_elements();
+        MPI_Allgather(&n_vertices, 1, MPI_LONG_LONG, vertices_by_rank.data(), 1, MPI_LONG_LONG, comm);
+        MPI_Allgather(&n_elements, 1, MPI_LONG_LONG, elements_by_rank.data(), 1, MPI_LONG_LONG, comm);
 
-        // Cell types and sizes over the active local elements, summed / reduced over the ranks.
-        std::vector<libMesh::dof_id_type> type_counts(static_cast<std::size_t>(libMesh::INVALID_ELEM) + 1, 0);
+        // Element sizes: the edges of the local elements, reduced over the ranks.
         double h_min = std::numeric_limits<double>::max(), h_max = 0.0;
-        for (const auto *elem : mesh.active_local_element_ptr_range())
+        mfem::Array<int> vertices;
+        for (int e = 0; e < mesh.n_local_elements(); ++e)
         {
-            ++type_counts[static_cast<std::size_t>(elem->type())];
-            h_min = std::min(h_min, static_cast<double>(elem->hmin()));
-            h_max = std::max(h_max, static_cast<double>(elem->hmax()));
+            pmesh.GetElementVertices(e, vertices);
+            const mfem::Element *element = pmesh.GetElement(e);
+            for (int k = 0; k < element->GetNEdges(); ++k)
+            {
+                const int *ev = element->GetEdgeVertices(k);
+                const double *a = pmesh.GetVertex(vertices[ev[0]]), *b = pmesh.GetVertex(vertices[ev[1]]);
+                double l = 0.0;
+                for (int c = 0; c < pmesh.SpaceDimension(); ++c)
+                    l += (a[c] - b[c]) * (a[c] - b[c]);
+                h_min = std::min(h_min, std::sqrt(l));
+                h_max = std::max(h_max, std::sqrt(l));
+            }
         }
-        comm.sum(type_counts);
-        comm.min(h_min);
-        comm.max(h_max);
-        std::vector<std::string> types;
-        for (std::size_t t = 0; t < type_counts.size(); ++t)
-            if (type_counts[t])
-                types.push_back(libMesh::Utility::enum_to_string(static_cast<libMesh::ElemType>(t)) + " " +
-                                std::to_string(type_counts[t]));
+        MPI_Allreduce(MPI_IN_PLACE, &h_min, 1, MPI_DOUBLE, MPI_MIN, comm);
+        MPI_Allreduce(MPI_IN_PLACE, &h_max, 1, MPI_DOUBLE, MPI_MAX, comm);
 
-        const libMesh::BoundingBox box = libMesh::MeshTools::create_bounding_box(mesh);
-        std::set<libMesh::subdomain_id_type> subdomains;
-        mesh.subdomain_ids(subdomains);
-        std::vector<unsigned int> dimensions(mesh.elem_dimensions().begin(), mesh.elem_dimensions().end());
-        std::vector<std::string> orders;
-        for (const auto order : mesh.elem_default_orders())
-            orders.push_back(libMesh::Utility::enum_to_string(order));
+        std::vector<std::string> types;
+        for (const auto &[type, count] : mesh.cell_type_counts())
+            types.push_back(std::string(fem::cell_type_name(type)) + " " + std::to_string(count));
+        std::array<double, 3> lo, hi;
+        lo.fill(std::numeric_limits<double>::max());
+        hi.fill(-std::numeric_limits<double>::max());
+        for (std::size_t p = 0; p < mesh.n_points(); ++p)
+            for (unsigned int c = 0; c < 3; ++c)
+            {
+                lo[c] = std::min(lo[c], mesh.point(static_cast<std::int64_t>(p))[c]);
+                hi[c] = std::max(hi[c], mesh.point(static_cast<std::int64_t>(p))[c]);
+            }
 
         Table table("Mesh");
-        table.row({"Spatial dimension", std::to_string(mesh.spatial_dimension())})
-            .row({"Element dimensions", join(dimensions)})
-            .row({"Element orders", join(orders)})
-            .row({"Nodes", std::to_string(mesh.n_nodes())})
-            .row({"Elements (active)", std::to_string(mesh.n_elem()) + " (" + std::to_string(mesh.n_active_elem()) + ")"})
+        table.row({"Spatial dimension", std::to_string(pmesh.SpaceDimension())})
+            .row({"Element dimension", std::to_string(mesh.dimension())})
+            .row({"Geometric order", std::string(mesh.geometric_order() == 2 ? (mesh.serendipity() ? "second (serendipity cells)" : "second")
+                                                                              : "first")})
+            .row({"Points", std::to_string(mesh.n_points())})
+            .row({"Elements", std::to_string(mesh.n_cells())})
             .row({"Element types", join(types)})
-            .row({"Subdomains (TYPE ids)", ranges(subdomains)})
+            .row({"Subdomains (TYPE ids)", ranges(mesh.subdomain_ids())})
             .row({"Element size h", "min " + scientific(h_min) + ", max " + scientific(h_max)})
             .section("Bounding box");
         for (unsigned int axis = 0; axis < 3; ++axis)
-            table.row({std::string(1, "xyz"[axis]),
-                       "[" + number(box.min()(axis)) + ", " + number(box.max()(axis)) + "]"});
-        table.section("Distribution")
-            .row({"Nodes by rank", by_rank(nodes_by_rank)})
+            table.row({std::string(1, "xyz"[axis]), "[" + number(lo[axis]) + ", " + number(hi[axis]) + "]"});
+        table.section("Distribution (METIS)")
+            .row({"Vertices by rank", by_rank(vertices_by_rank)})
             .row({"Elements by rank", by_rank(elements_by_rank)});
         return table.str();
     }
@@ -335,21 +343,21 @@ namespace pytec3d::report
     {
         const pytec3d::ModelData &data = equation_systems.get_model_data();
         const ModelElementTypes &element_types = equation_systems.element_types();
-        const libMesh::MeshBase &mesh = equation_systems.get_mesh();
+        const fem::FEMesh &mesh = equation_systems.mesh();
 
         // Cells of each TYPE id, over all the ranks.
-        std::vector<libMesh::subdomain_id_type> ids;
+        std::vector<int> ids;
         for (const auto &[id, entry] : element_types.entries())
             ids.push_back(id);
         std::sort(ids.begin(), ids.end());
-        std::vector<libMesh::dof_id_type> cells(ids.size(), 0);
-        for (const auto *elem : mesh.active_local_element_ptr_range())
+        std::vector<long long> cells(ids.size(), 0);
+        for (int e = 0; e < mesh.n_local_elements(); ++e)
         {
-            const auto it = std::lower_bound(ids.begin(), ids.end(), elem->subdomain_id());
-            if (it != ids.end() && *it == elem->subdomain_id())
+            const auto it = std::lower_bound(ids.begin(), ids.end(), mesh.subdomain(e));
+            if (it != ids.end() && *it == mesh.subdomain(e))
                 ++cells[static_cast<std::size_t>(it - ids.begin())];
         }
-        mesh.comm().sum(cells);
+        MPI_Allreduce(MPI_IN_PLACE, cells.data(), static_cast<int>(cells.size()), MPI_LONG_LONG, MPI_SUM, mesh.comm());
 
         const auto &laws = data.law_selection();
         const auto selected = [&laws](registry::LawSource source, unsigned int id)
@@ -439,39 +447,52 @@ namespace pytec3d::report
 
     std::string format_equation_systems_summary_table(const pyTEC3DEquationSystems &equation_systems)
     {
+        const fem::FEMesh &mesh = equation_systems.mesh();
+        const MPI_Comm comm = mesh.comm();
         Table table("Systems");
         table.header({"System", "Variable", "FE family", "Order", "Subdomains", "Variable DOFs", "System DOFs",
-                      "Local DOFs by rank"});
-        libMesh::dof_id_type all_dofs = 0;
-        for (int i = 0; i < pyTEC3DSystemBase::NUM_SYSTEMS; ++i)
+                      "Owned DOFs by rank"});
+
+        // The DOF system: its unknowns (MFEM true DOFs of the elements where each variable is active).
+        const fem::DofSpace &dofs = equation_systems.dof_space();
+        std::vector<long long> by_rank_dofs(dofs.owned_by_rank().begin(), dofs.owned_by_rank().end());
+        for (unsigned int v = 0; v < dofs.n_vars(); ++v)
         {
-            const auto type = static_cast<pyTEC3DSystemBase::SystemType>(i);
-            const auto &name = pyTEC3DSystemBase::SYSTEM_INFO_MAP.at(type);
-            const auto &system = equation_systems.get_system<libMesh::System>(name);
-            std::vector<libMesh::dof_id_type> local_by_rank;
-            system.comm().allgather(system.n_local_dofs(), local_by_rank);
-            all_dofs += system.n_dofs();
-            if (system.n_vars() == 0)
+            const fem::Variable &var = dofs.variable(v);
+            table.row({v == 0 ? pyTEC3DEquationSystems::system_name(pyTEC3DEquationSystems::DOF_SOLUTION_SYSTEM) : "", var.label,
+                       formulation::family_name(var.family), std::to_string(var.order), ranges(var.subdomains),
+                       std::to_string(dofs.n_global(v)), v == 0 ? std::to_string(dofs.n_global()) : "",
+                       v == 0 ? by_rank(by_rank_dofs) : ""});
+        }
+
+        // The fields: values per element (nodal fields: the element's nodal shape functions; element fields: one).
+        for (const auto type : {pyTEC3DEquationSystems::NODAL_SOLUTION, pyTEC3DEquationSystems::ELEMENT_SOLUTION})
+        {
+            const fem::SystemLayout &layout = equation_systems.layout(type);
+            long long local = 0;
+            for (int e = 0; e < mesh.n_local_elements(); ++e)
+                local += layout.n_element_dofs(e);
+            std::vector<long long> values_by_rank(static_cast<std::size_t>(mesh.n_ranks()));
+            MPI_Allgather(&local, 1, MPI_LONG_LONG, values_by_rank.data(), 1, MPI_LONG_LONG, comm);
+            long long total = 0;
+            for (const long long n : values_by_rank)
+                total += n;
+            if (layout.n_vars() == 0)
+                table.row({pyTEC3DEquationSystems::system_name(type), "-", "-", "-", "-", "-", "0", "-"});
+            for (unsigned int v = 0; v < layout.n_vars(); ++v)
             {
-                table.row({name, "-", "-", "-", "-", "-", std::to_string(system.n_dofs()), by_rank(local_by_rank)});
-                continue;
-            }
-            for (unsigned int var = 0; var < system.n_vars(); ++var)
-            {
-                const libMesh::FEType fe = system.variable_type(var);
-                std::vector<libMesh::dof_id_type> local_indices;
-                system.get_dof_map().local_variable_indices(local_indices, var);
-                libMesh::dof_id_type variable_dofs = local_indices.size();
-                system.comm().sum(variable_dofs);
-                const auto &subdomains = system.variable(var).active_subdomains();
-                table.row({var == 0 ? name : "", system.variable_name(var),
-                           libMesh::Utility::enum_to_string(fe.family),
-                           libMesh::Utility::enum_to_string(static_cast<libMesh::Order>(fe.order)),
-                           subdomains.empty() ? "all" : ranges(subdomains), std::to_string(variable_dofs),
-                           var == 0 ? std::to_string(system.n_dofs()) : "", var == 0 ? by_rank(local_by_rank) : ""});
+                const fem::Variable &var = layout.variable(v);
+                long long var_local = 0;
+                for (int e = 0; e < mesh.n_local_elements(); ++e)
+                    var_local += layout.n_element_dofs(v, e);
+                MPI_Allreduce(MPI_IN_PLACE, &var_local, 1, MPI_LONG_LONG, MPI_SUM, comm);
+                table.row({v == 0 ? pyTEC3DEquationSystems::system_name(type) : "", var.label,
+                           formulation::family_name(var.family), std::to_string(var.order), ranges(var.subdomains),
+                           std::to_string(var_local), v == 0 ? std::to_string(total) : "",
+                           v == 0 ? by_rank(values_by_rank) : ""});
             }
         }
-        table.section("All systems: " + std::to_string(all_dofs) + " DOFs");
+        table.section("Element field values: per element, not shared");
         return table.str();
     }
 
@@ -496,7 +517,7 @@ namespace pytec3d::report
         if (nonlinear)
         {
             const NewtonSettings &newton = settings.nonlinear;
-            table.section("Nonlinear solver (libMesh Newton)")
+            table.section("Nonlinear solver (Newton, libMesh algorithm)")
                 .row({"Maximum iterations", std::to_string(newton.max_iterations)})
                 .row({"Residual tolerance", "relative " + scientific(newton.relative_residual_tolerance) + ", absolute " +
                                                 scientific(newton.absolute_residual_tolerance)})

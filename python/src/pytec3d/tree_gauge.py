@@ -106,7 +106,7 @@ def edges(
     """The distinct edges of the quadratic cells (all, or ``cell_ids``), oriented as the solver orients an edge DOF.
 
     The value of an edge field (``_T``, ``_A``, ``_Hs``: component 2 of the midside point) is a circulation along the
-    edge, from ``start`` to ``end``: libMesh orients a NEDELEC_ONE DOF from the end point with the lexicographically
+    edge, from ``start`` to ``end``: the solver orients a NEDELEC_ONE DOF from the end point with the lexicographically
     smaller coordinates (x, then y, then z) to the larger one. Use it to give the edge values of a known field
     (:func:`edge_circulations`) or the sign of a current across a cut.
 

@@ -117,11 +117,11 @@ namespace pytec3d
                            "\"nonlinear_laws\": {\"<id>\": {\"type\": \"bh_curve\", \"B\": [...], \"H\": [...]}}.");
         }
 
-        std::vector<libMesh::Real> read_curve_array(const json &entry, const std::string &key, const std::string &context)
+        std::vector<pytec3d::la::Real> read_curve_array(const json &entry, const std::string &key, const std::string &context)
         {
             if (!entry.contains(key) || !entry[key].is_array())
                 fail(context + " needs the array '" + key + "'.");
-            std::vector<libMesh::Real> values;
+            std::vector<pytec3d::la::Real> values;
             for (std::size_t i = 0; i < entry[key].size(); ++i)
                 values.push_back(finite_number(entry[key][i], context + "." + key + "[" + std::to_string(i) + "]"));
             return values;

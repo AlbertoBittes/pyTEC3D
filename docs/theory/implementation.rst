@@ -29,17 +29,23 @@ right-hand side term :math:`\int\mathcal{T}(\boldsymbol\phi_i)^T P`. The semi-di
 with :math:`\mathbf{u}` all the DOFs (A, V, VOLT, EMF). Each section of the theory gives the kernels of a domain: the
 2D ones in :ref:`theory-2d`, the 3D ones in :ref:`theory-3d`, the coils in :ref:`theory-stranded-coil`.
 
-* **Quadrature**: Gauss rule of the default order of the finite elements of the element type (the finite elements
-  and quadrature rules of libMesh [Kirk2006]_).
+* **Quadrature**: Gauss rule of the default order of the finite elements of the element type (2 p + 1, p the highest order of
+  its finite elements; the finite elements and Gauss rules of MFEM [MFEM]_, and the serendipity elements of the solver
+  on the quadratic cells without face-centre points).
 * **2D weights**: the weight of each quadrature point is multiplied by the out-of-plane length :math:`L`
   (``thickness``, times :math:`2\pi r` in axisymmetry), so every 2D integral is an integral over the 3D body.
 * **Coefficients**: material properties and real constants are constant over a cell (or computed per quadrature point
   by a law). Vector and tensor parameters are rotated from the element coordinate system of the cell to the global
   frame (:ref:`theory-element-cs`).
-* **Element matrices** K, C (and M) and the operators of the output fields are computed at the first solve of a
-  session and stored in the folder ``emat`` of the working directory; the following steps reuse them (the
-  coefficients do not change in time). The right-hand side is assembled at every step from the current loads; nodal
-  loads (``CURR``, ``AMPS``) are added to the row of the DOF they load.
+* **Geometry and shape functions** are computed in batches: the quadrature points, Jacobians and determinants of all
+  the elements of a geometry at once, and the reference shape functions (and gradients or curls) of each finite
+  element once per quadrature rule; the physical shape functions of an element follow from them (MFEM's geometric
+  factors and DofToQuad maps).
+* **Operators**: K, C (and M) and the operators of the output fields are assembled once per session, at the first
+  solve, into parallel sparse matrices (the element matrices, then P^T A P with the prolongation of the local DOFs to the
+  true DOFs, as an MFEM code assembles its forms); the following steps reuse them (the coefficients do not change in
+  time). The right-hand side is assembled at every step from the current loads; nodal loads (``CURR``, ``AMPS``) are
+  added to the row of the DOF they load. The element loops run on the threads of the session (``num_threads``).
 
 .. _theory-time-integration:
 
@@ -100,8 +106,10 @@ Constraints: Dirichlet values, nodal frames and couplings
 ---------------------------------------------------------
 
 **Dirichlet values** are read at every step from the point arrays ``_F`` of the DOF fields: a number fixes the
-component, NaN leaves it free. The constrained DOFs are eliminated from the system (heterogeneous constraints), so
-their equation is replaced by the imposed value.
+component, NaN leaves it free. The constrained DOFs are eliminated from the system: the constraints write the DOFs
+as :math:`\mathbf{u}=\mathsf{P}\mathbf{w}+\mathbf{g}` (:math:`\mathbf{w}` the free DOFs, :math:`\mathsf{P}` the
+prolongation of the constraint rows, :math:`\mathbf{g}` the imposed values), and the solver solves
+:math:`\mathsf{P}^T\mathsf{K}\mathsf{P}\,\mathbf{w}=\mathsf{P}^T(\mathbf{f}-\mathsf{K}\mathbf{g})`.
 
 **Nodal frames.** The values of a vector field at a node are given in the frame of the node, defined by the angles
 ``node_angles`` (:math:`\theta_{xy},\theta_{yz},\theta_{zx}`, rotations about z, x and y applied in this order) through

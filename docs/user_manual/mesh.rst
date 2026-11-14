@@ -82,8 +82,8 @@ Cell arrays
      - Meaning
    * - ``TYPE``
      - 1
-     - Id of the row of ``data["element_types"]`` of the cell: its element type, domain, FE order. Also the libMesh
-       subdomain id.
+     - Id of the row of ``data["element_types"]`` of the cell: its element type, domain, FE order. Also the subdomain
+       of the cell in the solver.
    * - ``MATERIAL``
      - 1
      - Id of the row of ``data["materials"]`` (and of the nonlinear laws of source ``mat``).

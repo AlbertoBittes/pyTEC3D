@@ -341,13 +341,13 @@ namespace
     TimeStepInput time_step_of(const py::dict &time_step)
     {
         TimeStepInput out;
-        out.time = time_step["time"].cast<libMesh::Real>();
-        out.theta = time_step["theta"].cast<libMesh::Real>();
+        out.time = time_step["time"].cast<double>();
+        out.theta = time_step["theta"].cast<double>();
         out.transient_effects = time_step["transient_effects"].cast<bool>();
         if (time_step.contains("beta"))
-            out.beta = time_step["beta"].cast<libMesh::Real>();
+            out.beta = time_step["beta"].cast<double>();
         if (time_step.contains("gamma"))
-            out.gamma = time_step["gamma"].cast<libMesh::Real>();
+            out.gamma = time_step["gamma"].cast<double>();
         return out;
     }
 
@@ -503,7 +503,7 @@ PYBIND11_MODULE(pytec3d_solver, module)
     module.attr("INTERFACE_VERSION") = kInterfaceVersion;
     module.def("shutdown_runtime", []
                { guarded("shutdown_runtime", [] { pyTEC3DSession::shutdown_runtime(); }); },
-               "Shuts down the process-wide libMesh / MPI runtime; call once, after closing every session.");
+               "Shuts down the process-wide runtime (PETSc, hypre, MPI); call once, after closing every session.");
     module.def("set_log_file", [](const std::string &path) { pytec3d::logging::set_log_file(path); },
                py::arg("path"),
                "Also write the solver log (rank 0) to the file, appending; can be called before the first session. "

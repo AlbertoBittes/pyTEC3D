@@ -21,23 +21,19 @@
  */
 #pragma once
 
+#include "la.h"
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include <libmesh/dense_matrix.h>
-#include <libmesh/dense_vector.h>
-#include <libmesh/libmesh_common.h>
-#include <libmesh/tensor_value.h>
-#include <libmesh/vector_value.h>
 
 #include "nabla.h"
 
 namespace pytec3d::kernel
 {
-    using Real = libMesh::Real;
-    using Vec = libMesh::RealVectorValue;
-    using Ten = libMesh::RealTensorValue;
+    using Real = pytec3d::la::Real;
+    using Vec = pytec3d::la::RealVectorValue;
+    using Ten = pytec3d::la::RealTensorValue;
 
     /** @brief A coefficient: one value, or one per quadrature point. */
     template <typename C>
@@ -113,7 +109,7 @@ namespace pytec3d::kernel
      */
     template <bool Symmetric = false, typename Test, typename C, typename Trial>
     void matrix(const QpDofTable<Test> &test, const Coefficient<C> &coefficient, const QpDofTable<Trial> &trial,
-                const std::vector<Real> &weights, libMesh::DenseMatrix<Real> &out)
+                const std::vector<Real> &weights, pytec3d::la::DenseMatrix<Real> &out)
     {
         using Value = decltype(value(std::declval<C>(), std::declval<Trial>()));
         const std::size_t nq = weights.size();
@@ -154,7 +150,7 @@ namespace pytec3d::kernel
     /** @brief F(i) = sum_qp w * dot(test_i, C); F is resized to the test dofs. */
     template <typename Test, typename C>
     void vector(const QpDofTable<Test> &test, const Coefficient<C> &coefficient, const std::vector<Real> &weights,
-                libMesh::DenseVector<Real> &out)
+                pytec3d::la::DenseVector<Real> &out)
     {
         const std::size_t nq = weights.size();
         out.resize(test.empty() ? 0 : static_cast<unsigned int>(test[0].size()));
@@ -174,7 +170,7 @@ namespace pytec3d::kernel
      */
     template <typename Test, typename C, typename Trial>
     void applied(const QpDofTable<Test> &test, const Coefficient<C> &coefficient, const QpDofTable<Trial> &trial,
-                 const libMesh::DenseVector<Real> &u, const std::vector<Real> &weights, libMesh::DenseVector<Real> &out)
+                 const pytec3d::la::DenseVector<Real> &u, const std::vector<Real> &weights, pytec3d::la::DenseVector<Real> &out)
     {
         using Value = decltype(dense(value(std::declval<C>(), std::declval<Trial>())));
         for (std::size_t qp = 0; qp < weights.size(); ++qp)

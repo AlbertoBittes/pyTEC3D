@@ -34,7 +34,7 @@ The code has two modules:
 * a **Python package** (``pytec3d``) that reads the mesh, prepares the analysis (element types, materials, loads,
   boundary conditions, couplings), drives the time stepping and the plasma algorithm, and post-processes the results;
 * a **C++ solver** (``pytec3d_solver``) that distributes the mesh and the degrees of freedom, builds the element
-  matrices and the system in parallel with `libMesh <https://libmesh.github.io/>`_, and solves it with
+  matrices and the system in parallel with `MFEM <https://mfem.org/>`_, and solves it with
   `PETSc <https://petsc.org/>`_ and `MUMPS <https://mumps-solver.org/>`_ (or an iterative solver). It depends neither
   on VTK nor on the Python package: it works on views of the arrays of the mesh, without copying them
   (:doc:`solver_interface`), and can be driven by any program.

@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "la.h"
 #include <map>
 #include <string>
 #include <vector>
@@ -15,7 +16,6 @@
 #include <tuple>
 #include <unordered_map>
 
-#include <libmesh/id_types.h>
 
 #include "element_type.h"
 #include "model_data.h"
@@ -28,14 +28,14 @@ public:
         const pytec3d::ElementType *type = nullptr;
         pytec3d::registry::Domain domain = pytec3d::registry::Domain::COUNT; ///< Physical region of the subdomain.
     };
-    using EntriesMap = std::unordered_map<libMesh::subdomain_id_type, Entry>;
+    using EntriesMap = std::unordered_map<pytec3d::la::subdomain_id_type, Entry>;
 
     explicit ModelElementTypes(const pytec3d::ModelData &model_data);
 
     const EntriesMap &entries() const { return entries_; }
 
     /** @brief Entry of subdomain @p subdomain_id; aborts if the subdomain has no element type. */
-    const Entry &get(libMesh::subdomain_id_type subdomain_id) const;
+    const Entry &get(pytec3d::la::subdomain_id_type subdomain_id) const;
 
     /** @brief Highest time order of the element types: the order of the time scheme. */
     unsigned int time_order() const;

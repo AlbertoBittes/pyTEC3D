@@ -2,9 +2,11 @@
  * @file nabla.h
  * @brief Nabla: one differential operator (identity, grad, curl, div) applied to the shape functions of one FE.
  *
- * A Nabla follows what libMesh gives for its FE:
- *  - scalar FE (FEBase):       phi Real, dphi RealGradient;
- *  - vector FE (FEVectorBase): phi RealVectorValue, div_phi Real, curl_phi RealVectorValue, dphi RealTensorValue.
+ * The shape functions of an FE on the element are those of its MFEM finite element in physical space (FEState,
+ * filled by ElementType::reinit()):
+ *  - scalar FE (Lagrange):          phi Real, dphi RealGradient;
+ *  - vector Lagrange (vdim copies): shape k = c n + j (c = k / n, j = k % n, n the scalar ones) is phi_j e_c;
+ *  - Nedelec:                       phi RealVectorValue, curl_phi RealVectorValue (2D: its z component).
  * Evaluated on the element the FE was last reinit()ed on, it gives a table [quadrature point][shape function]
  * of Real, RealVectorValue or RealTensorValue (NablaSpec::output):
  *
@@ -17,31 +19,23 @@
  *                             curl(phi e_theta) = (-dphi/dz, dphi/dr + phi / r)
  *   vector  identity  Vector  phi
  *   vector  curl      Vector  curl_phi (3D); 2D: its out-of-plane component (z), axisymmetric the theta one,
- *                             dV_r/dz - dV_z/dr (minus libMesh's)
- *   vector  div       Real    div_phi; axisymmetric adds phi_r / r
- *   vector  grad      Tensor  dphi (not axisymmetric)
- *
- * The shape functions are in libMesh's order: for a vector Lagrange FE, node by node and component by
- * component within a node (shape i is the scalar shape i / dim on component i % dim), the order of the DOFs of a
- * vector variable.
+ *                             dV_r/dz - dV_z/dr (minus the z one)
+ *   vector  div       Real    div_phi; axisymmetric adds phi_r / r (vector Lagrange)
+ *   vector  grad      Tensor  dphi, row c the gradient of component c (vector Lagrange, not axisymmetric)
  */
 #pragma once
 
 #include <vector>
 
-#include <libmesh/libmesh_common.h>
-#include <libmesh/tensor_value.h>
-#include <libmesh/vector_value.h>
-
 #include "formulation_spec.h"
-
-namespace libMesh
-{
-    class FEAbstract;
-}
+#include "la.h"
 
 namespace pytec3d
 {
+    using la::Real;
+    using la::RealTensorValue;
+    using la::RealVectorValue;
+
     /** @brief Values [quadrature point][shape function]. */
     template <typename T>
     using QpDofTable = std::vector<std::vector<T>>;
@@ -50,9 +44,9 @@ namespace pytec3d
     struct ValueTable
     {
         formulation::ValueType type = formulation::ValueType::Scalar;
-        QpDofTable<libMesh::Real> scalar;
-        QpDofTable<libMesh::RealVectorValue> vector;
-        QpDofTable<libMesh::RealTensorValue> tensor;
+        QpDofTable<Real> scalar;
+        QpDofTable<RealVectorValue> vector;
+        QpDofTable<RealTensorValue> tensor;
 
         template <typename T>
         const QpDofTable<T> &get() const;
@@ -64,35 +58,52 @@ namespace pytec3d
     };
 
     template <>
-    inline const QpDofTable<libMesh::Real> &ValueTable::get() const { return scalar; }
+    inline const QpDofTable<Real> &ValueTable::get() const { return scalar; }
     template <>
-    inline const QpDofTable<libMesh::RealVectorValue> &ValueTable::get() const { return vector; }
+    inline const QpDofTable<RealVectorValue> &ValueTable::get() const { return vector; }
     template <>
-    inline const QpDofTable<libMesh::RealTensorValue> &ValueTable::get() const { return tensor; }
+    inline const QpDofTable<RealTensorValue> &ValueTable::get() const { return tensor; }
     template <>
-    inline QpDofTable<libMesh::Real> &ValueTable::get() { return scalar; }
+    inline QpDofTable<Real> &ValueTable::get() { return scalar; }
     template <>
-    inline QpDofTable<libMesh::RealVectorValue> &ValueTable::get() { return vector; }
+    inline QpDofTable<RealVectorValue> &ValueTable::get() { return vector; }
     template <>
-    inline QpDofTable<libMesh::RealTensorValue> &ValueTable::get() { return tensor; }
+    inline QpDofTable<RealTensorValue> &ValueTable::get() { return tensor; }
+
+    /** @brief The shape functions of one FE on the current element, at its quadrature points. */
+    struct FEState
+    {
+        formulation::FEFamily family = formulation::FEFamily::LAGRANGE;
+        unsigned int vdim = 1;        ///< Copies of the scalar element (vector Lagrange), else 1.
+        bool need_dphi = false;       ///< The nablas read the gradients (scalar elements).
+        bool need_curl = false;       ///< The nablas read the curls (Nedelec).
+        QpDofTable<Real> phi;               ///< Scalar elements.
+        QpDofTable<RealVectorValue> dphi;   ///< Scalar elements.
+        QpDofTable<RealVectorValue> vphi;   ///< Nedelec.
+        QpDofTable<RealVectorValue> curl;   ///< Nedelec; (0, 0, curl) on 2D elements.
+
+        bool nedelec() const { return family == formulation::FEFamily::NEDELEC_ONE; }
+    };
 
     class Nabla
     {
     public:
-        /** @brief Binds @p spec to @p fe and requests from it the data the operator reads. */
-        Nabla(const formulation::NablaSpec &spec, libMesh::FEAbstract &fe, unsigned int dimension, bool axisymmetric);
+        Nabla(const formulation::NablaSpec &spec, unsigned int dimension, bool axisymmetric);
 
         const formulation::NablaSpec &spec() const { return *spec_; }
+        /** @brief What the operator reads from its FE (FEState::need_dphi, need_curl). */
+        void request(FEState &fe) const;
 
         /**
-         * @brief The table on the element the FE was last reinit()ed on.
+         * @brief The table on the element of @p fe.
+         * @param xyz The quadrature points (the radius of axisymmetric elements).
          * @param length Out-of-plane length at each quadrature point (2D elements; 1 on 3D ones).
          */
-        void evaluate(const std::vector<libMesh::Real> &length, ValueTable &out) const;
+        void evaluate(const FEState &fe, const std::vector<la::Point> &xyz, const std::vector<Real> &length,
+                      ValueTable &out) const;
 
     private:
         const formulation::NablaSpec *spec_;
-        libMesh::FEAbstract *fe_;
         unsigned int dimension_;
         bool axisymmetric_;
     };

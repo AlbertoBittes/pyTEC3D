@@ -25,7 +25,7 @@ ModelElementTypes::ModelElementTypes(const pytec3d::ModelData &model_data)
         Entry entry;
         entry.type = type->second.get();
         entry.domain = spec.domain;
-        entries_[static_cast<libMesh::subdomain_id_type>(subdomain)] = entry;
+        entries_[static_cast<pytec3d::la::subdomain_id_type>(subdomain)] = entry;
     }
 }
 
@@ -37,7 +37,7 @@ unsigned int ModelElementTypes::time_order() const
     return order;
 }
 
-const ModelElementTypes::Entry &ModelElementTypes::get(libMesh::subdomain_id_type subdomain_id) const
+const ModelElementTypes::Entry &ModelElementTypes::get(pytec3d::la::subdomain_id_type subdomain_id) const
 {
     const auto it = entries_.find(subdomain_id);
     if (it == entries_.end())

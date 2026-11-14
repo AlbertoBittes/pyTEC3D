@@ -71,12 +71,12 @@ Troubleshooting
 ``'<name>' is not defined for element type ... in domain ...`` (C++)
    A material property or real constant needed by a cell is missing from its row.
 
-``Can only use Cholesky decomposition with symmetric positive definite matrices`` (C++)
+``DenseMatrix::cholesky_solve(): matrix not positive definite`` (C++)
    The mass matrix of the projection of the nodal fields is singular: in 2D, the out-of-plane length is zero (a
    ``thickness`` of 0 in a constants row). Leave ``thickness`` out (default 1) or give the real value.
 
-``NEDELEC_ONE on geometric element HEX8 only supports ...`` (libMesh)
-   Edge element types need a quadratic mesh.
+``the edge (NEDELEC_ONE) field 'A' needs a quadratic mesh`` (C++)
+   Edge element types need a quadratic mesh: their DOFs are on the midside points.
 
 The results are zero
    Check the warnings "No loads" / "No boundary conditions", the *Constraints* table (were the conditions applied to

@@ -9,9 +9,10 @@
 #include "pytec3d_model.h"
 #include "report_tables.h"
 
-#include <libmesh/libmesh.h>
-
+#include <mfem.hpp>
 #include <mpi.h>
+#include <omp.h>
+#include <petscsys.h>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -35,7 +36,42 @@ namespace
         Closed
     };
 
-    /** @brief The process-wide libMesh / MPI runtime, shared by the sessions. */
+    /** @brief The process-wide runtime: MPI, PETSc (the linear solvers), hypre (the parallel matrices of MFEM). */
+    class Runtime
+    {
+    public:
+        explicit Runtime(int n_threads)
+        {
+            int initialized = 0;
+            MPI_Initialized(&initialized);
+            if (!initialized)
+            {
+                int provided = 0;
+                // NULL-terminated: MPI reads argv up to the null pointer when it starts without mpirun (singleton).
+                static char name[] = "pytec3d_solver";
+                static char *argv_storage[] = {name, nullptr};
+                int argc = 1;
+                char **argv = argv_storage;
+                MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+                owns_mpi_ = true;
+            }
+            PetscInitializeNoArguments();
+            mfem::Hypre::Init();
+            omp_set_num_threads(n_threads);
+        }
+        ~Runtime()
+        {
+            mfem::Hypre::Finalize();
+            PetscFinalize();
+            if (owns_mpi_)
+                MPI_Finalize();
+        }
+
+    private:
+        bool owns_mpi_ = false;
+    };
+
+    /** @brief The process-wide runtime, shared by the sessions. */
     class RuntimeManager
     {
     public:
@@ -45,7 +81,7 @@ namespace
             return manager;
         }
 
-        std::shared_ptr<libMesh::LibMeshInit> acquire(int n_threads)
+        std::shared_ptr<Runtime> acquire(int n_threads)
         {
             std::lock_guard<std::mutex> guard(mutex_);
 
@@ -54,9 +90,7 @@ namespace
 
             if (state_ == RuntimeState::Uninitialized)
             {
-                // NULL-terminated: MPI reads argv up to the null pointer when it starts without mpirun (singleton).
-                static const char *argv[] = {"pytec3d_solver", nullptr};
-                libmesh_init_ = std::make_shared<libMesh::LibMeshInit>(1, argv, MPI_COMM_WORLD, n_threads);
+                runtime_ = std::make_shared<Runtime>(n_threads);
                 pytec3d::logging::initialize(MPI_COMM_WORLD, "pytec3d");
                 pytec3d::logging::info("Runtime started: {} MPI rank(s), {} thread(s) per rank.",
                                        pytec3d::logging::size(), n_threads);
@@ -69,7 +103,7 @@ namespace
                                        n_threads_, n_threads);
 
             ++active_sessions_;
-            return libmesh_init_;
+            return runtime_;
         }
 
         void release()
@@ -93,7 +127,7 @@ namespace
                 pytec3d::logging::error_and_abort("Cannot shut down the pyTEC3D runtime while sessions are open.");
 
             pytec3d::logging::shutdown();
-            libmesh_init_.reset();
+            runtime_.reset();
             state_ = RuntimeState::Closed;
         }
 
@@ -111,7 +145,7 @@ namespace
 
         std::mutex mutex_;
         RuntimeState state_ = RuntimeState::Uninitialized;
-        std::shared_ptr<libMesh::LibMeshInit> libmesh_init_;
+        std::shared_ptr<Runtime> runtime_;
         int n_threads_ = 1;
         int active_sessions_ = 0;
         bool banner_printed_ = false;
@@ -160,7 +194,7 @@ namespace
         const std::string stamp = std::string(__DATE__) + " " + __TIME__;
         pytec3d::logging::table_root(pytec3d::report::format_solver_banner(
             {pytec3d_version_string(), build_mode_string(), stamp, git_commit_string(), host_name(), pytec3d::logging::size(),
-             static_cast<int>(libMesh::n_threads())}));
+             omp_get_max_threads()}));
     }
 } // namespace
 
@@ -169,7 +203,7 @@ pyTEC3DSession::pyTEC3DSession(int num_threads_per_mpi_process)
     if (num_threads_per_mpi_process < 1)
         pytec3d::logging::error_and_abort("num_threads_per_mpi_process must be >= 1.");
 
-    libmesh_init_ = RuntimeManager::instance().acquire(num_threads_per_mpi_process);
+    runtime_ = RuntimeManager::instance().acquire(num_threads_per_mpi_process);
     print_solver_banner_once();
 }
 
@@ -184,7 +218,7 @@ void pyTEC3DSession::close()
         return;
 
     model_.reset();
-    libmesh_init_.reset();
+    runtime_.reset();
     RuntimeManager::instance().release();
     closed_ = true;
 }
@@ -201,7 +235,7 @@ void pyTEC3DSession::load_model(const pytec3d::ModelInput &input)
 
     model_.reset();
     auto model = std::make_unique<pyTEC3DModel>();
-    model->load(libmesh_init_->comm(), input);
+    model->load(MPI_COMM_WORLD, input);
     model_ = std::move(model);
 }
 

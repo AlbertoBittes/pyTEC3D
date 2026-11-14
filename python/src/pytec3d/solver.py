@@ -37,7 +37,7 @@ BACKEND_MODULE = "pytec3d_solver.pytec3d_solver"
 SOLVER_INTERFACE_VERSION = 3
 
 #: Default solver settings. ``linear``: the PETSc KSP (a direct LU factorisation with MUMPS by default), used alone
-#: or inside each Newton iteration. ``nonlinear``: the libMesh Newton solver of the models with nonlinear laws.
+#: or inside each Newton iteration. ``nonlinear``: the Newton solver of the models with nonlinear laws.
 #: ``petsc_options``: PETSc options set before each linear solve ("" for a flag); None removes a default one.
 DEFAULT_SOLVER_SETTINGS: dict[str, Any] = {
     "linear": {
@@ -147,7 +147,7 @@ class Solver:
                 :meth:`close`.
             log_file: Also write the log of the run (Python and C++ messages and tables) to a file: True for
                 ``<mesh_name>.log`` in the working directory, a path, or False for none. The file is started when
-                the model is read or loaded, overwriting an older one. The raw output of PETSc and libMesh (e.g.
+                the model is read or loaded, overwriting an older one. The raw output of PETSc (e.g.
                 ``-ksp_monitor``, the Newton iterations) only goes to the standard output.
 
         Raises:

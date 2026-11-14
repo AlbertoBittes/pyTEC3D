@@ -27,9 +27,9 @@ namespace pytec3d
     using formulation::EvaluationKind;
     using formulation::Stage;
     using formulation::ValueType;
-    using libMesh::Real;
-    using libMesh::RealTensorValue;
-    using libMesh::RealVectorValue;
+    using la::Real;
+    using la::RealTensorValue;
+    using la::RealVectorValue;
 
     namespace
     {
@@ -108,8 +108,8 @@ namespace pytec3d
         struct KernelResult
         {
             bool done = false;
-            libMesh::DenseMatrix<Real> matrix;  ///< Test and trial.
-            libMesh::DenseVector<Real> vector;  ///< Test only.
+            la::DenseMatrix<Real> matrix;  ///< Test and trial.
+            la::DenseVector<Real> vector;  ///< Test only.
             ValueTable table;                   ///< Trial only.
             std::vector<ParameterValue> values; ///< Neither: per quadrature point.
         };
@@ -139,9 +139,12 @@ namespace pytec3d
         public:
             explicit Evaluator(const Inputs &inputs) : in_(inputs), type_(*inputs.type)
             {
-                const libMesh::FEAbstract *geometry = type_.reinit(*in_.elem, in_.domain, in_.operation, in_.laws);
+                const ElementGeometry *geometry = type_.reinit(*in_.elem, in_.domain, in_.operation, in_.laws);
                 if (geometry)
-                    weights_ = geometry->get_JxW();
+                {
+                    weights_ = geometry->JxW;
+                    xyz_ = geometry->xyz;
+                }
                 nq_ = weights_.size();
                 length_.assign(nq_, 1.0);
                 if (geometry && spec.dimension == 2)
@@ -149,12 +152,12 @@ namespace pytec3d
                     Real thickness = 1.0;
                     if constexpr (spec.out_of_plane_length >= 0)
                         thickness = in_.parameters->symbol(static_cast<registry::ParameterId>(spec.out_of_plane_length)).scalar();
-                    const auto &xyz = geometry->get_xyz();
+                    const auto &xyz = xyz_;
                     for (std::size_t qp = 0; qp < nq_; ++qp)
                     {
                         // Out-of-plane length: the declared length, times the circumference of the axisymmetric element.
                         const Real r = std::sqrt(xyz[qp](0) * xyz[qp](0) + xyz[qp](2) * xyz[qp](2));
-                        length_[qp] = type_.options().axisymmetric ? thickness * 2.0 * libMesh::pi * r : thickness;
+                        length_[qp] = type_.options().axisymmetric ? thickness * 2.0 * la::pi * r : thickness;
                         weights_[qp] *= length_[qp];
                     }
                 }
@@ -412,7 +415,7 @@ namespace pytec3d
             {
                 if (!table_done_[index])
                 {
-                    type_.nabla(index).evaluate(length_, tables_[index]);
+                    type_.nabla(index).evaluate(type_.fe_state(spec.nablas[index].fe), xyz_, length_, tables_[index]);
                     table_done_[index] = true;
                 }
                 return tables_[index];
@@ -806,6 +809,7 @@ namespace pytec3d
             const ElementType &type_;
             std::size_t nq_ = 0;
             std::vector<Real> weights_;
+            std::vector<la::Point> xyz_;
             std::vector<Real> length_;
             std::vector<Real> mean_weights_;
             std::array<ValueTable, kNablas> tables_{};
@@ -844,7 +848,7 @@ namespace pytec3d
         impl_->add_rhs(F);
     }
 
-    void ElementEvaluator::add_law_output(Vector &R, const std::array<libMesh::Real, 3> &scale)
+    void ElementEvaluator::add_law_output(Vector &R, const std::array<la::Real, 3> &scale)
     {
         impl_->add_law_output(R, scale);
     }

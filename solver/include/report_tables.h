@@ -18,9 +18,9 @@ struct SolverSettings;
 struct StepReport;
 struct TimeStep;
 
-namespace libMesh
+namespace pytec3d::fem
 {
-    class MeshBase;
+    class FEMesh;
 }
 
 namespace pytec3d
@@ -89,7 +89,7 @@ namespace pytec3d::report
 
     std::string format_solver_banner(const BannerInfo &info);
     /** @brief Collective. */
-    std::string format_mesh_summary_table(const libMesh::MeshBase &mesh);
+    std::string format_mesh_summary_table(const fem::FEMesh &mesh);
     /** @brief @p flipped: the elements reoriented when the mesh was imported. */
     std::string format_mesh_quality_table(const std::vector<ShapeQuality> &quality, std::size_t flipped);
     /** @brief The element types by TYPE id (with their cell counts), materials, constants, laws, couplings. Collective. */

@@ -10,24 +10,24 @@
 
 namespace pytec3d
 {
-    CurveData::CurveData(std::vector<libMesh::Real> x, std::vector<libMesh::Real> y)
+    CurveData::CurveData(std::vector<pytec3d::la::Real> x, std::vector<pytec3d::la::Real> y)
         : x_(std::move(x)), y_(std::move(y))
     {
     }
 
-    libMesh::Real CurveData::value(libMesh::Real x) const
+    pytec3d::la::Real CurveData::value(pytec3d::la::Real x) const
     {
         const std::size_t i = segment(x);
         return y_[i] + (x - x_[i]) / (x_[i + 1] - x_[i]) * (y_[i + 1] - y_[i]);
     }
 
-    libMesh::Real CurveData::slope(libMesh::Real x) const
+    pytec3d::la::Real CurveData::slope(pytec3d::la::Real x) const
     {
         const std::size_t i = segment(x);
         return (y_[i + 1] - y_[i]) / (x_[i + 1] - x_[i]);
     }
 
-    std::size_t CurveData::segment(libMesh::Real x) const
+    std::size_t CurveData::segment(pytec3d::la::Real x) const
     {
         if (x <= x_.front())
             return 0;

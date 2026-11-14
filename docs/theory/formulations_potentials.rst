@@ -212,5 +212,5 @@ The conducting ball in a field switched on at :math:`t = 0` has the induced mome
 
 is reproduced by ``AVA3D_edge`` and ``TPHI3D_edge``, the box carrying the exact exterior
 field. The edge DOF of a Dirichlet array is the circulation of the field along the edge **from its lexicographically
-smaller end point to the larger one** (x, then y, then z: libMesh's edge orientation), which is how the benchmarks
+smaller end point to the larger one** (x, then y, then z: the edge orientation of the solver), which is how the benchmarks
 impose a non-zero tangential A (:func:`pytec3d.tree_gauge.edges`, :func:`pytec3d.tree_gauge.edge_circulations`).

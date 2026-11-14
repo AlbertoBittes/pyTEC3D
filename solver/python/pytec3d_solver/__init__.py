@@ -1,6 +1,6 @@
 """The compiled C++ solver of pyTEC3D (``pytec3d_solver.pytec3d_solver``), driven by :class:`pytec3d.Solver`.
 
-Distribution ``pytec3d-solver`` (``solver/`` of the repository): the solver core, built against libMesh, PETSc and
+Distribution ``pytec3d-solver`` (``solver/`` of the repository): the solver core, built against MFEM, hypre, PETSc and
 MPI, with its pybind11 module. It does not depend on the ``pytec3d`` package, nor on VTK: it receives NumPy views of
 the model arrays.
 """

@@ -7,19 +7,19 @@
 TimeScheme TimeScheme::make(const TimeStep &step, unsigned int time_order)
 {
     TimeScheme s;
-    const libMesh::Real dt = step.dt;
+    const pytec3d::la::Real dt = step.dt;
     if (!step.transient_effects || time_order == 0)
         return s;
     if (time_order == 1)
     {
-        const libMesh::Real theta = step.theta;
+        const pytec3d::la::Real theta = step.theta;
         s.c_v = 1.0 / (theta * dt);
         s.hu_v = -1.0 / (theta * dt);
         s.hv_v = -(1.0 - theta) / theta;
         return s;
     }
-    const libMesh::Real beta = step.beta;
-    const libMesh::Real gamma = step.gamma;
+    const pytec3d::la::Real beta = step.beta;
+    const pytec3d::la::Real gamma = step.gamma;
     s.c_a = 1.0 / (beta * dt * dt);
     s.hu_a = -1.0 / (beta * dt * dt);
     s.hv_a = -1.0 / (beta * dt);

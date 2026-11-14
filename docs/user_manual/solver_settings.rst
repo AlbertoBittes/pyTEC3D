@@ -9,8 +9,8 @@ option removed (set to ``None``) is cleared.
 
 The linear systems are solved with `PETSc <https://petsc.org/>`_ [PETScManual]_: the ``linear`` group configures a
 KSP (Krylov solver) and its PC (preconditioner), described in the `KSP chapter
-<https://petsc.org/release/manual/ksp/>`_ of the PETSc manual; the ``nonlinear`` group configures the Newton solver of
-libMesh (:libmesh:`NewtonSolver`) [Kirk2006]_.
+<https://petsc.org/release/manual/ksp/>`_ of the PETSc manual; the ``nonlinear`` group configures the Newton solver of the
+solver, whose algorithm (line search, convergence tests) is that of libMesh's :libmesh:`NewtonSolver` [Kirk2006]_.
 
 .. code-block:: python
 
@@ -25,7 +25,7 @@ libMesh (:libmesh:`NewtonSolver`) [Kirk2006]_.
            "initial_guess_nonzero": False,
            "factor_solver_type": "mumps",  # package of lu / cholesky; None for the PETSc default
        },
-       "nonlinear": {                    # libMesh Newton solver (models with nonlinear laws)
+       "nonlinear": {                    # Newton solver (models with nonlinear laws)
            "max_iterations": 50,
            "absolute_residual_tolerance": 1e-35,
            "relative_residual_tolerance": 1e-8,
@@ -140,7 +140,7 @@ the problem, Picard does not converge): :ref:`superconductor-settings`.
    * - ``linear_tolerance_multiplier``
      - Tolerance of each linear solve, relative to the current residual (iterative solvers).
    * - ``continue_after_max_iterations``
-     - libMesh: return the last iterate when ``max_iterations`` is reached (True) or fail inside the solver. Either
+     - Return the last iterate when ``max_iterations`` is reached (True) or fail inside the solver. Either
        way ``solve()`` raises :class:`~pytec3d.errors.ConvergenceError` for a step that did not converge.
    * - ``continue_after_backtrack_failure``
      - Accept the iterate when the line search fails.

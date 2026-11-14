@@ -13,9 +13,9 @@ namespace pytec3d
         switch (type)
         {
         case ParameterType::Vector:
-            return ParameterValue(libMesh::RealVectorValue());
+            return ParameterValue(pytec3d::la::RealVectorValue());
         case ParameterType::Tensor:
-            return ParameterValue(libMesh::RealTensorValue());
+            return ParameterValue(pytec3d::la::RealTensorValue());
         case ParameterType::Scalar:
             break;
         }
@@ -30,7 +30,7 @@ namespace pytec3d
         return *this;
     }
 
-    ParameterValue ParameterValue::scaled(libMesh::Real factor) const
+    ParameterValue ParameterValue::scaled(pytec3d::la::Real factor) const
     {
         return std::visit([factor](const auto &value)
                           { return ParameterValue(std::decay_t<decltype(value)>(factor * value)); },
