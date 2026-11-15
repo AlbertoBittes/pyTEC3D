@@ -287,7 +287,7 @@ void pyTEC3DEquationSystems::compute_law_ranges()
                 this->comm().max(range.max_input);
                 if (reg::kLaws[law].curve != reg::CurveId::COUNT)
                     if (const pytec3d::CurveData *curve = model_data_.curve(reg::kLaws[law].curve, id))
-                        range.curve_max = curve->x().back();
+                        range.curve_max = curve->is_analytic() ? 0.0 : curve->x_max(); // analytic: no extrapolation
                 range.extrapolated = range.curve_max > 0.0 && range.max_input > range.curve_max;
                 if (range.extrapolated)
                     pytec3d::logging::warn("The {} law of {} {}: |{}| reaches {:.4g} (element mean), beyond the last "

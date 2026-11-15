@@ -627,20 +627,53 @@ class _ModelChecker:
                 seen.add(name)
                 curve = self.laws[name].get("curve")
                 curves = ([tuple(curve)] if curve else []) + [tuple(c) for c in self.laws[name].get("curves", [])]
-                expected = {"type", *(a for c in curves for a in c)}
+                expected = {"type", *(a for c in curves for a in c), *("d" + c[1] for c in curves)}
                 unknown = sorted(set(entry) - expected)
                 if unknown:
                     self.problems.append(
                         f"{label}: unknown keys {unknown} for the law '{name}'; expected {sorted(expected)}."
                     )
-                for x_key, y_key in curves:
-                    self.curve(entry, x_key, y_key, label)
+                for x_key, y_key, *args in curves:
+                    self.curve(entry, x_key, y_key, label, args)
                 source = self.laws[name]["source"]
                 if cell_ids[source].size and row_id not in set(np.unique(cell_ids[source]).tolist()):
                     LOGGER.warning("%s: no cell has the %s id %d.", label, source.rstrip("s").replace("_", " "), row_id)
 
-    def curve(self, entry: Mapping[str, Any], x_key: str, y_key: str, label: str) -> None:
-        """The x and y arrays of a law: numeric, finite, same length >= 2, x strictly increasing."""
+    def curve(self, entry: Mapping[str, Any], x_key: str, y_key: str, label: str, args: list[str] | None = None) -> None:
+        """A curve of a law (curve.h): the x and y arrays (numeric, finite, same length >= 2, x strictly increasing);
+        with arguments a table (the axes x and the arguments, each strictly increasing, y of their shape); or an
+        analytic law, y and its x derivative "d<y>" expressions (strings; parsed by the solver)."""
+        args = args or []
+        d_key = "d" + y_key
+        if isinstance(entry.get(y_key), str):
+            if not isinstance(entry.get(d_key), str):
+                self.problems.append(f"{label}: the analytic law '{y_key}' needs its derivative in {x_key}, "
+                                     f"'{d_key}' (an expression of {[x_key, *args]}).")
+            for key in (x_key, *args):
+                if key in entry:
+                    self.problems.append(f"{label}: '{key}' is a variable of the analytic law '{y_key}', not an array.")
+            return
+        if d_key in entry:
+            self.problems.append(f"{label}: '{d_key}' goes with an analytic law '{y_key}' (a string), not with arrays.")
+        if args:
+            axes = []
+            for key in (x_key, *args):
+                try:
+                    axis = np.asarray(entry.get(key), dtype=float)
+                except (TypeError, ValueError):
+                    axis = np.zeros(0)
+                if axis.ndim != 1 or axis.size < 2 or not np.all(np.isfinite(axis)) or np.any(np.diff(axis) <= 0.0):
+                    self.problems.append(f"{label}: '{key}' must be a strictly increasing array of >= 2 finite values.")
+                    return
+                axes.append(axis.size)
+            try:
+                table = np.asarray(entry.get(y_key), dtype=float)
+            except (TypeError, ValueError):
+                table = np.zeros(0)
+            if table.shape != tuple(axes) or not np.all(np.isfinite(table)):
+                self.problems.append(f"{label}: '{y_key}' must be a table of finite values of shape {tuple(axes)} "
+                                     f"(the lengths of {[x_key, *args]}), or an analytic law.")
+            return
         if not all(isinstance(entry.get(key), list) for key in (x_key, y_key)):
             self.problems.append(f"{label}: needs the arrays '{x_key}' and '{y_key}'.")
             return

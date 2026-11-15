@@ -98,6 +98,10 @@ nonlinear_laws.json, "nonlinear_laws": { "<name>": {
   "curve": {"x": "B", "y": "H"},       optional: the entry of the law carries the arrays "<x>" and "<y>" of a
                                        curve y(x), extended by its first and last segments (``curve`` in expressions).
   "curves": {"jc": {"x": "Bjc", "y": "jc"}},  optional: more named curves (at most MAX_LAW_CURVES), the same way.
+  "args": ["Bt"] in a curve: arguments after x (at most MAX_CURVE_ARGS), the expressions call curve.value(x, bt):
+                                       the model data gives the curve as a table on the grid of x and the
+                                       arguments, or as an analytic law of them; any curve may be analytic,
+                                       "<y>": "<expression>", "d<y>": "<its x derivative>" (curve.h).
   "expressions": { "b": "B.norm()", ... },  C++, in order.
   "coefficients": { "nu[][]": {"secant": "...", "tangent": "..."}, "nu_gauge": {"secant": "..."} } } }
       The coefficients (parameters or expressions of the element types) the law replaces, with their type,
@@ -130,6 +134,8 @@ STD_FUNCTIONS = ("abs", "sqrt", "cbrt", "pow", "exp", "log", "sin", "cos", "tan"
 LIBMESH_NAMES = ("Real", "RealVectorValue", "RealTensorValue", "pi", "outer_product")
 MAX_LAW_INPUTS = 2  # extra inputs of a law (LawSpec::inputs)
 MAX_LAW_CURVES = 2  # extra curves of a law (LawInfo::curves)
+MAX_CURVE_ARGS = 2  # arguments of a curve after x (CurveSource::args): y(x, p, q)
+CURVE_ARGS = {}  # (law, x, y) -> the names of its arguments ("args" of the curve in nonlinear_laws.json)
 RESERVED_NAMES = {"axisymmetric", "source", "input", "curve", "I", "std", "libMesh", *STD_FUNCTIONS, *LIBMESH_NAMES}
 CPP_KEYWORDS = {
     "alignas", "alignof", "and", "asm", "auto", "bool", "break", "case", "catch", "char", "class", "const",
@@ -322,24 +328,37 @@ def read_laws(resource_dir):
         source = read_string(options, "source", context)
         if source not in LAW_SOURCES:
             fail(f"{context}: source must be one of {', '.join(LAW_SOURCES)} (the model data rows that select it).")
+        def curve_args(cdef, key, where):
+            args = cdef.get("args", [])
+            if not isinstance(args, list) or len(args) > MAX_CURVE_ARGS or not all(isinstance(a, str) for a in args):
+                fail(f"{where}: args is a list of at most {MAX_CURVE_ARGS} names (the arguments of the curve after "
+                     "x: the axes of its table, the variables of its analytic law).")
+            CURVE_ARGS[key] = list(args)
+            return list(args)
+
         curve = None
+        all_args = []
         if "curve" in options:
-            check_keys(options["curve"], {"x", "y"}, f"{context}, curve")
+            check_keys(options["curve"], {"x", "y", "args"}, f"{context}, curve")
             x, y = (read_string(options["curve"], key, f"{context}, curve") for key in ("x", "y"))
             if x == y or "type" in (x, y):
                 fail(f"{context}, curve: x and y must be two names other than 'type'.")
             curve = (name, x, y)
+            all_args += curve_args(options["curve"], curve, f"{context}, curve")
         extra_curves = []
         for cname, cdef in options.get("curves", {}).items():
             where = f"{context}, curves '{cname}'"
             check_enumerator(cname, where)
             if cname in RESERVED_NAMES:
                 fail(f"{where}: the name is reserved.")
-            check_keys(cdef, {"x", "y"}, where)
-            extra_curves.append((cname, (name, *(read_string(cdef, key, where) for key in ("x", "y")))))
+            check_keys(cdef, {"x", "y", "args"}, where)
+            key = (name, *(read_string(cdef, k, where) for k in ("x", "y")))
+            extra_curves.append((cname, key))
+            all_args += curve_args(cdef, key, where)
         if len(extra_curves) > MAX_LAW_CURVES:
             fail(f"{context}: at most {MAX_LAW_CURVES} curves besides 'curve'.")
-        arrays = [a for c in [curve] + [c for _, c in extra_curves] if c for a in c[1:]]
+        arrays = [a for c in [curve] + [c for _, c in extra_curves] if c for a in c[1:]] + all_args
+        arrays += ["d" + c[2] for c in [curve] + [c for _, c in extra_curves] if c]  # the derivatives of analytic laws
         if len(arrays) != len(set(arrays)) or "type" in arrays:
             fail(f"{context}: the x and y names of the curves must all differ, and differ from 'type'.")
         extra_inputs = options.get("inputs", [])
@@ -1331,10 +1350,14 @@ def render_registries(registries):
     out.append("    std::string_view law;")
     out.append("    std::string_view x;")
     out.append("    std::string_view y;")
+    out.append(f"    std::array<std::string_view, {MAX_CURVE_ARGS}> args; ///< The arguments after x (table axes, law variables).")
+    out.append("    unsigned char n_args;")
     out.append("};")
     out.append(f"inline constexpr std::array<CurveSource, {len(curves)}> kCurveSources = {{{{")
     for law, x, y in curves:
-        out.append(f"    {{{cpp_string(law)}, {cpp_string(x)}, {cpp_string(y)}}},")
+        args = CURVE_ARGS.get((law, x, y), [])
+        padded = [cpp_string(a) for a in args] + ['""'] * (MAX_CURVE_ARGS - len(args))
+        out.append(f"    {{{cpp_string(law)}, {cpp_string(x)}, {cpp_string(y)}, {{{{{', '.join(padded)}}}}}, {len(args)}}},")
     out.append("}};")
     out.append("")
 

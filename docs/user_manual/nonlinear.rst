@@ -57,6 +57,13 @@ and compiled into the solver. The library has these laws:
        at fixed B: the Jacobian has no term of the variation of B with the unknowns (no cross-coupling), so Newton
        needs more iterations where s varies fast (``kim_slab``: up to 18 per step). Its floor (the first segment of
        :math:`E_0`) is scaled by 1/s.
+   * - ``power_law_jb``
+     - ``mat``
+     - Jt, H
+     - curve ``J``, ``E`` of the argument ``Bt``
+     - ``rho`` of the T-phi types with any field dependence: :math:`E(J,B_t)`, :math:`B_t=\mu_0|H|`, a 2D table on a
+       grid of J and Bt or an analytic law (below); :math:`\rho_s=E(|J|,B_t)/|J|`, tangent from
+       :math:`\partial E/\partial J` at fixed Bt (as ``power_law_b``).
 
 Both conduction laws read the same E-J table, rows ``[J, E]`` from J = 0, both increasing:
 ``solver.model.set_power_law(material_id, table)`` selects ``power_law`` for the T-phi types and ``power_law_e`` for
@@ -155,6 +162,38 @@ The curve
 * The initial reluctivity (:math:`B\to0`) is the slope of the first segment.
 * Use a monotone table (H increasing with B): a decreasing segment makes the tangent indefinite and Newton may fail.
 * The ``mur`` of the material is still required by validation but is not used where the law applies.
+
+Curves: points, tables, analytic laws
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every curve of a law can be given in one of three forms (the keys are the names of its x and y, e.g. ``B`` and ``H``):
+
+* **points**: ``"B": [...]``, ``"H": [...]`` as above, piecewise linear;
+* **table**: a curve with arguments (``"args"`` of the curve in ``nonlinear_laws.json``, e.g. ``Bt`` of
+  ``power_law_jb``) gives the axis x and an axis per argument, each strictly increasing, and y as nested arrays
+  ``[x][arg]``: multilinear on the grid, extended linearly outside it as the points are;
+* **analytic law**: ``"H": "<expression>"`` with ``"dH": "<expression>"`` its derivative in x, of the variables x and
+  the arguments: numbers, ``+ - * / ^``, comparisons and ``c ? a : b``, the functions ``sin cos tan asin acos atan
+  atan2 sinh cosh tanh exp log log10 sqrt abs sign floor ceil pow min max hypot``, the constants ``pi``, ``e``,
+  ``mu0``. The solver parses them when the model is loaded (an error names the character). The derivative is the
+  user's: it is the tangent of the Newton Jacobian, so a wrong one slows Newton down but does not change the solution.
+
+.. code-block:: python
+
+   # B(H) of a saturating iron for the scalar potentials (bh_curve_h), and its derivative
+   solver.model.set_nonlinear_law(2, "bh_curve_h", B="mu0 * H + 1.8 * H / (H + 300)",
+                                  dB="mu0 + 1.8 * 300 / (H + 300)^2")
+   # a Kim-model power law as a 2D table E(J, Bt)  (J: n values, Bt: m values, E: n x m)
+   solver.model.set_nonlinear_law(2, "power_law_jb", J=j, Bt=bt, E=e_table)
+   # or analytically
+   solver.model.set_nonlinear_law(2, "power_law_jb", E="1e-9 * J + 1e-4 * (J * (1 + Bt / 0.2) / 1e8)^20",
+                                  dE="1e-9 + 1e-4 * 20 * (1 + Bt / 0.2) / 1e8 * (J * (1 + Bt / 0.2) / 1e8)^19")
+
+An analytic law has no last point: the operating range table does not flag extrapolation. Unbounded laws (a power law
+:math:`J^n`) make the first residual of a step huge at a poor starting guess, so a relative residual tolerance may
+stop Newton early: give an absolute one (the ``kim_slab_forms`` benchmark uses tight absolute tolerances). Benchmarks:
+``bh_analytic`` (the analytic B-H law against its exact solution and against its points) and ``kim_slab_forms``
+(``power_law_b``, the ``power_law_jb`` table and analytic law against each other and the 1D reference).
 
 The law is isotropic (it depends on :math:`|B|` only) and stateless (no hysteresis). A nonlinear material can be in any
 domain: soft iron (``SOFT_MAGNETIC``), a magnet, a conducting steel (``SOLID_CONDUCTOR``, eddy currents and

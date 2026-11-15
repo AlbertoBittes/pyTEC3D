@@ -83,6 +83,7 @@ set(SOURCES
   "${SOURCE_DIR}/augment_sparsity_on_nodes.cpp"
   "${SOURCE_DIR}/constraints.cpp"
   "${SOURCE_DIR}/curve.cpp"
+  "${SOURCE_DIR}/expression.cpp"
   "${SOURCE_DIR}/element_builder.cpp"
   "${SOURCE_DIR}/element_evaluator.cpp"
   "${SOURCE_DIR}/element_parameters.cpp"

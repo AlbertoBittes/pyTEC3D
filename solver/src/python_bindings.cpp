@@ -461,7 +461,16 @@ namespace
         out["real_constants"] = types_of(reg::kRealConstantNames, reg::kRealConstantTypes);
 
         // law -> {"source": "materials" | "constants" | "element_types" (what the ids of its "nonlinear_laws" entries are),
-        //         "curve": (x, y) array names of its entries, or None}
+        //         "curve": (x, y, *args) names of its entries, or None; "curves": the same for its named curves}
+        const auto curve_names = [](const reg::CurveSource &curve)
+        {
+            py::list names;
+            names.append(std::string(curve.x));
+            names.append(std::string(curve.y));
+            for (unsigned int k = 0; k < curve.n_args; ++k)
+                names.append(std::string(curve.args[k]));
+            return py::tuple(names);
+        };
         py::dict laws;
         for (std::size_t i = 0; i < reg::kNumLawId; ++i)
         {
@@ -474,15 +483,13 @@ namespace
                 law["curve"] = py::none();
             else
             {
-                const reg::CurveSource &curve = reg::kCurveSources[static_cast<std::size_t>(info.curve)];
-                law["curve"] = py::make_tuple(std::string(curve.x), std::string(curve.y));
+                law["curve"] = curve_names(reg::kCurveSources[static_cast<std::size_t>(info.curve)]);
             }
             py::list curves; // the arrays of its named curves
             for (const reg::CurveId c : info.curves)
                 if (c != reg::CurveId::COUNT)
                 {
-                    const reg::CurveSource &curve = reg::kCurveSources[static_cast<std::size_t>(c)];
-                    curves.append(py::make_tuple(std::string(curve.x), std::string(curve.y)));
+                    curves.append(curve_names(reg::kCurveSources[static_cast<std::size_t>(c)]));
                 }
             law["curves"] = curves;
             laws[py::str(std::string(reg::kLawIdNames[i]))] = law;
