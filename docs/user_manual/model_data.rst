@@ -80,7 +80,8 @@ element_types
        Each element type accepts its own subset (:ref:`el-domains`): the A, V-A types 0-6 (3D: without 4), ``PHI3D_nodal``
        0-3, the T-phi types 0, 1, 2, 5 and 7.
    * - ``option2``
-     - FE order of the Lagrange fields, 1 or 2 (default 1). Order 2 needs quadratic cells. Edge fields are always
+     - FE order of the Lagrange fields, 1 or 2 (default 1), up to 8 on VTK Lagrange cells (any order that divides
+       the order of the cells, :doc:`mesh`). Order 2 needs quadratic cells. Edge fields are always
        first-order Nedelec; ``option2`` then sets the order of V, VOLT and EMF. ``TPHI3D_edge``, ``TPHI2D_edge`` and
        ``PHI3D_nodal`` are first order only (``option2`` = 1: the gradients of PHI must lie in the edge space of T or
        Hs); they still need quadratic cells, which carry the edge DOFs on their midside nodes.

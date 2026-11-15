@@ -172,7 +172,7 @@ std::vector<pytec3d::fem::Variable> pyTEC3DEquationSystems::system_variables(Sys
 void pyTEC3DEquationSystems::initialize_systems()
 {
     use_nonlinear_system_ = has_nonlinear_elements();
-    catalog_ = std::make_unique<pytec3d::fem::FECatalog>(mesh_.dimension(), mesh_.serendipity());
+    catalog_ = std::make_unique<pytec3d::fem::FECatalog>(mesh_.dimension(), mesh_.serendipity(), mesh_.lagrange_order());
 
     // The quadrature of every local element at the order of its element type, computed in batches.
     std::vector<int> orders(static_cast<std::size_t>(mesh_.n_local_elements()));
@@ -343,7 +343,7 @@ void pyTEC3DEquationSystems::compute_law_ranges()
                 MPI_Allreduce(MPI_IN_PLACE, &range.max_input, 1, MPI_DOUBLE, MPI_MAX, mesh_.comm());
                 if (reg::kLaws[law].curve != reg::CurveId::COUNT)
                     if (const pytec3d::CurveData *curve = model_data_.curve(reg::kLaws[law].curve, id))
-                        range.curve_max = curve->x().back();
+                        range.curve_max = curve->is_analytic() ? 0.0 : curve->x_max(); // analytic: no extrapolation
                 range.extrapolated = range.curve_max > 0.0 && range.max_input > range.curve_max;
                 if (range.extrapolated)
                     pytec3d::logging::warn("The {} law of {} {}: |{}| reaches {:.4g} (element mean), beyond the last point of "

@@ -735,6 +735,7 @@ double DofSystem::assemble_residual()
     mfem::Vector laws;
     assemble_laws(false, &laws);
     residual_.SetSize(static_cast<int>(dofs_.n_owned()));
+    residual_ = 0.0; // hypre forms beta * y with beta = 0
     Keff_->Mult(vectors_[SOLUTION], residual_);
     residual_ -= F_;
     residual_ += laws;
@@ -960,6 +961,7 @@ void DofSystem::solve_nonlinear()
         mfem::Vector laws;
         assemble_laws(true, &laws);
         residual_.SetSize(static_cast<int>(dofs_.n_owned()));
+        residual_ = 0.0; // hypre forms beta * y with beta = 0
         Keff_->Mult(vectors_[SOLUTION], residual_);
         residual_ -= F_;
         residual_ += laws;

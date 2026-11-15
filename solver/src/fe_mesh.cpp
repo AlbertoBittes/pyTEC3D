@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -44,8 +45,71 @@ namespace pytec3d::fem
             std::vector<int> flip;                ///< Corner permutation that reverses the orientation.
         };
 
-        const CellSpec &cell_spec(int vtk, std::size_t cell)
+        bool is_lagrange(int vtk)
         {
+            return vtk >= cell_type::LAGRANGE_TRIANGLE && vtk <= cell_type::LAGRANGE_WEDGE;
+        }
+
+        /** @brief Points of a VTK Lagrange cell of order @p p. */
+        int lagrange_nodes(int vtk, int p)
+        {
+            switch (vtk)
+            {
+            case cell_type::LAGRANGE_TRIANGLE: return (p + 1) * (p + 2) / 2;
+            case cell_type::LAGRANGE_QUADRILATERAL: return (p + 1) * (p + 1);
+            case cell_type::LAGRANGE_TETRAHEDRON: return (p + 1) * (p + 2) * (p + 3) / 6;
+            case cell_type::LAGRANGE_HEXAHEDRON: return (p + 1) * (p + 1) * (p + 1);
+            case cell_type::LAGRANGE_WEDGE: return (p + 1) * (p + 1) * (p + 2) / 2;
+            default: return 0;
+            }
+        }
+
+        /** @brief The order of a VTK Lagrange cell with @p n points; 0 if none. */
+        int lagrange_order_of(int vtk, std::int64_t n)
+        {
+            for (int p = 1; p <= 10; ++p)
+                if (lagrange_nodes(vtk, p) == n)
+                    return p;
+            return 0;
+        }
+
+        const CellSpec &cell_spec(int vtk, std::size_t cell, int lagrange_order = 0);
+
+        /** @brief The spec of a VTK Lagrange cell of order @p p: no named high-order points (several per entity). */
+        const CellSpec &lagrange_spec(int vtk, int p)
+        {
+            using G = mfem::Geometry;
+            static std::map<std::pair<int, int>, CellSpec> specs;
+            static std::mutex mutex;
+            std::lock_guard<std::mutex> lock(mutex);
+            auto it = specs.find({vtk, p});
+            if (it != specs.end())
+                return it->second;
+            CellSpec spec;
+            spec.vtk = vtk;
+            spec.order = p;
+            spec.n_nodes = lagrange_nodes(vtk, p);
+            spec.quad_faces = 2;
+            switch (vtk)
+            {
+            case cell_type::LAGRANGE_TRIANGLE: spec.geometry = G::TRIANGLE; spec.dimension = 2; spec.n_corners = 3; break;
+            case cell_type::LAGRANGE_QUADRILATERAL: spec.geometry = G::SQUARE; spec.dimension = 2; spec.n_corners = 4; break;
+            case cell_type::LAGRANGE_TETRAHEDRON: spec.geometry = G::TETRAHEDRON; spec.dimension = 3; spec.n_corners = 4; break;
+            case cell_type::LAGRANGE_HEXAHEDRON: spec.geometry = G::CUBE; spec.dimension = 3; spec.n_corners = 8; break;
+            case cell_type::LAGRANGE_WEDGE: spec.geometry = G::PRISM; spec.dimension = 3; spec.n_corners = 6; break;
+            default: break;
+            }
+            return specs.emplace(std::make_pair(vtk, p), spec).first->second;
+        }
+
+        const CellSpec &cell_spec(int vtk, std::size_t cell, int lagrange_order)
+        {
+            if (is_lagrange(vtk))
+            {
+                if (lagrange_order < 1)
+                    fail("cell " + std::to_string(cell) + ": a VTK Lagrange cell of unknown order.");
+                return lagrange_spec(vtk, lagrange_order);
+            }
             using G = mfem::Geometry;
             static const std::map<int, CellSpec> specs = []
             {
@@ -100,7 +164,8 @@ namespace pytec3d::fem
             if (it == specs.end())
                 fail("cell " + std::to_string(cell) + " has the VTK cell type " + std::to_string(vtk) +
                      ", which the solver does not support (2D: triangles and quadrilaterals, 3D: tetrahedra, "
-                     "hexahedra, wedges and pyramids, linear or quadratic).");
+                     "hexahedra, wedges and pyramids, linear or quadratic; VTK Lagrange triangles, quadrilaterals, tetrahedra, "
+                     "hexahedra and wedges of any order).");
             return it->second;
         }
 
@@ -168,6 +233,11 @@ namespace pytec3d::fem
         case cell_type::BIQUADRATIC_QUADRATIC_WEDGE: return "PRISM18";
         case cell_type::PYRAMID: return "PYRAMID5";
         case cell_type::QUADRATIC_PYRAMID: return "PYRAMID13";
+        case cell_type::LAGRANGE_TRIANGLE: return "TRI_LAGRANGE";
+        case cell_type::LAGRANGE_QUADRILATERAL: return "QUAD_LAGRANGE";
+        case cell_type::LAGRANGE_TETRAHEDRON: return "TET_LAGRANGE";
+        case cell_type::LAGRANGE_HEXAHEDRON: return "HEX_LAGRANGE";
+        case cell_type::LAGRANGE_WEDGE: return "PRISM_LAGRANGE";
         default: return "UNKNOWN";
         }
     }
@@ -182,6 +252,22 @@ namespace pytec3d::fem
             fail("the mesh has no cell.");
 
         // ---- Cells: types, orders, orientation --------------------------------------------------------------------
+        // VTK Lagrange cells: one order for the whole mesh (the order of their points).
+        for (std::size_t i = 0; i < n_cells_; ++i)
+        {
+            const int vtk = view.cell_types(i);
+            if (!is_lagrange(vtk))
+                continue;
+            const int p = lagrange_order_of(vtk, view.offsets(i + 1) - view.offsets(i));
+            if (p == 0)
+                fail("cell " + std::to_string(i) + ": a VTK Lagrange cell with " +
+                     std::to_string(view.offsets(i + 1) - view.offsets(i)) + " points, the count of no order.");
+            if (lagrange_order_ != 0 && p != lagrange_order_)
+                fail("VTK Lagrange cells of the orders " + std::to_string(lagrange_order_) + " and " + std::to_string(p) +
+                     " in one mesh (cell " + std::to_string(i) + "): all the cells must have the same order.");
+            lagrange_order_ = p;
+        }
+
         std::map<int, std::size_t> type_counts;
         int order = 0;
         int quad_faces = 0;
@@ -189,7 +275,7 @@ namespace pytec3d::fem
         std::vector<char> is_corner(n_points_, 0);
         for (std::size_t i = 0; i < n_cells_; ++i)
         {
-            const CellSpec &spec = cell_spec(view.cell_types(i), i);
+            const CellSpec &spec = cell_spec(view.cell_types(i), i, lagrange_order_);
             ++type_counts[spec.vtk];
             const std::int64_t begin = view.offsets(i);
             const std::int64_t n = view.offsets(i + 1) - begin;
@@ -204,8 +290,8 @@ namespace pytec3d::fem
             if (order == 0)
                 order = spec.order;
             else if (order != spec.order)
-                fail("linear and quadratic cells in one mesh (cell " + std::to_string(i) + "): all the cells must have "
-                     "the same geometric order.");
+                fail("cells of different geometric orders in one mesh (cell " + std::to_string(i) + "): all the cells "
+                     "must have the same order (linear, quadratic, or VTK Lagrange of one order).");
             if (spec.quad_faces != 0)
             {
                 if (quad_faces != 0 && quad_faces != spec.quad_faces)
@@ -230,6 +316,9 @@ namespace pytec3d::fem
 
             std::int64_t *out = conn.data() + begin;
             const std::int64_t *in = view.connectivity.data() + begin;
+            if (flipped && is_lagrange(spec.vtk))
+                fail("cell " + std::to_string(i) + " is a VTK Lagrange cell with an inverted node ordering: write it "
+                     "with the orientation of VTK (the solver reorients only the linear and quadratic cells).");
             if (!flipped)
                 std::copy(in, in + n, out);
             else
@@ -259,7 +348,7 @@ namespace pytec3d::fem
         // The edges of every cell by their midpoints: the couplings of edge DOFs read them on any rank.
         for (std::size_t i = 0; i < n_cells_; ++i)
         {
-            const CellSpec &spec = cell_spec(view.cell_types(i), i);
+            const CellSpec &spec = cell_spec(view.cell_types(i), i, lagrange_order_);
             const std::int64_t *pts = conn.data() + view.offsets(i);
             for (const HighOrderNode &node : spec.high)
                 if (node.corners.size() == 2)
@@ -301,7 +390,7 @@ namespace pytec3d::fem
         }
         for (std::size_t i = 0; i < n_cells_; ++i)
         {
-            const CellSpec &spec = cell_spec(view.cell_types(i), i);
+            const CellSpec &spec = cell_spec(view.cell_types(i), i, lagrange_order_);
             int v[8];
             for (int j = 0; j < spec.n_corners; ++j)
                 v[j] = vertex_of_point[static_cast<std::size_t>(conn[static_cast<std::size_t>(view.offsets(i)) + j])];
@@ -366,7 +455,7 @@ namespace pytec3d::fem
         {
             int n = 0;
             const std::int64_t *pts = element_points(e, n);
-            const CellSpec &spec = cell_spec(cell_types_[static_cast<std::size_t>(e)], static_cast<std::size_t>(cells_[static_cast<std::size_t>(e)]));
+            const CellSpec &spec = cell_spec(cell_types_[static_cast<std::size_t>(e)], static_cast<std::size_t>(cells_[static_cast<std::size_t>(e)]), lagrange_order_);
             for (const HighOrderNode &node : spec.high)
             {
                 if (static_cast<int>(node.corners.size()) == spec.n_corners && spec.dimension == 3)
@@ -415,7 +504,25 @@ namespace pytec3d::fem
             point_rule(e);
 
         // ---- Curved geometry: the points of the quadratic cells as the mesh nodes -------------------------------
-        if (geometric_order_ == 2)
+        if (lagrange_order_ >= 2)
+        {
+            // The equispaced nodal space of the order of the cells: its nodes are the points of the cells.
+            auto *fec = new mfem::H1_FECollection(lagrange_order_, dimension_, mfem::BasisType::ClosedUniform);
+            auto *fes = new mfem::ParFiniteElementSpace(mesh_.get(), fec, dimension_, mfem::Ordering::byVDIM);
+            mesh_->SetNodalFESpace(fes);
+            mfem::GridFunction &nodes = *mesh_->GetNodes();
+            nodes.MakeOwner(fec);
+            const std::vector<std::int64_t> points = dof_points(*fes);
+            for (int dof = 0; dof < fes->GetNDofs(); ++dof)
+            {
+                const std::int64_t p = points[static_cast<std::size_t>(dof)];
+                if (p < 0)
+                    fail("a node of the Lagrange geometry has no point.");
+                for (int c = 0; c < dimension_; ++c)
+                    nodes(fes->DofToVDof(dof, c)) = view.points(static_cast<std::size_t>(p), static_cast<std::size_t>(c));
+            }
+        }
+        else if (geometric_order_ == 2)
         {
             auto *fec = new QuadraticH1Collection(dimension_, serendipity_);
             auto *fes = new mfem::ParFiniteElementSpace(mesh_.get(), fec, dimension_, mfem::Ordering::byVDIM);
@@ -461,7 +568,20 @@ namespace pytec3d::fem
             return it->second;
         // Corners in the vertex order of the MFEM geometry (the VTK one); the other points are the centres of their
         // corners on the reference element (edge midpoints, face and cell centres).
-        const CellSpec &spec = cell_spec(vtk, 0);
+        const CellSpec &spec = cell_spec(vtk, 0, lagrange_order_);
+        if (is_lagrange(vtk))
+        {
+            // The points of the VTK Lagrange cell on the reference element: MFEM's own VTK ordering of the equispaced
+            // points (CreateVTKElementConnectivity, as MFEM writes high-order VTK files); the corners in the vertex
+            // order of the MFEM element, the VTK one.
+            mfem::Array<int> con;
+            mfem::CreateVTKElementConnectivity(con, spec.geometry, spec.order);
+            const mfem::RefinedGeometry *refined = mfem::GlobGeometryRefiner.Refine(spec.geometry, spec.order, 1);
+            std::vector<mfem::IntegrationPoint> points(static_cast<std::size_t>(con.Size()));
+            for (int j = 0; j < con.Size(); ++j)
+                points[static_cast<std::size_t>(j)] = refined->RefPts.IntPoint(con[j]);
+            return reference_points_.emplace(vtk, std::move(points)).first->second;
+        }
         const mfem::IntegrationRule &corners = *mfem::Geometries.GetVertices(spec.geometry);
         std::vector<mfem::IntegrationPoint> points(static_cast<std::size_t>(spec.n_nodes));
         for (int j = 0; j < spec.n_corners; ++j)
@@ -504,6 +624,47 @@ namespace pytec3d::fem
     {
         std::vector<std::int64_t> points(static_cast<std::size_t>(fes.GetNDofs()), -1);
         mfem::Array<int> dofs;
+        if (lagrange_order_ > 0)
+        {
+            // Lagrange cells: each DOF of a nodal element is the point of the cell at its node (reference coordinates).
+            for (int e = 0; e < mesh_->GetNE(); ++e)
+            {
+                const auto *fe = dynamic_cast<const mfem::NodalFiniteElement *>(fes.GetFE(e));
+                if (!fe)
+                    continue;
+                fes.GetElementDofs(e, dofs);
+                const mfem::IntegrationRule &nodes = fe->GetNodes();
+                const std::vector<mfem::IntegrationPoint> &reference = reference_points(e);
+                int n = 0;
+                const std::int64_t *pts = element_points(e, n);
+                if (dofs.Size() != nodes.GetNPoints() || static_cast<int>(reference.size()) != n)
+                    fail("element " + std::to_string(e) + ": " + std::to_string(dofs.Size()) + " DOFs, " +
+                         std::to_string(nodes.GetNPoints()) + " nodes, " + std::to_string(reference.size()) +
+                         " reference points and " + std::to_string(n) + " cell points.");
+                for (int k = 0; k < dofs.Size(); ++k)
+                {
+                    const mfem::IntegrationPoint &a = nodes.IntPoint(k);
+                    bool found = false;
+                    for (std::size_t j = 0; j < reference.size(); ++j)
+                    {
+                        const mfem::IntegrationPoint &b = reference[j];
+                        if (std::abs(a.x - b.x) + std::abs(a.y - b.y) + std::abs(a.z - b.z) < 1e-10)
+                        {
+                            const int d = dofs[k] >= 0 ? dofs[k] : -1 - dofs[k];
+                            points[static_cast<std::size_t>(d)] = pts[j];
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                        fail("element " + std::to_string(e) + ": the node (" + std::to_string(a.x) + ", " +
+                             std::to_string(a.y) + ", " + std::to_string(a.z) + ") of DOF " + std::to_string(k) +
+                             " of its order-" + std::to_string(fe->GetOrder()) + " element is no point of its cell "
+                             "(the order of the field is above the order of the cells, or not a sub-lattice of it).");
+                }
+            }
+            return points;
+        }
         const auto assign = [&](const mfem::Array<int> &entity_dofs, std::int64_t point)
         {
             // One DOF per entity has the point of the entity; several (high order) have none.

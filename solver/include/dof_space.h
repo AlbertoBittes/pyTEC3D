@@ -30,6 +30,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -75,7 +76,9 @@ namespace pytec3d::fem
     class FECatalog
     {
     public:
-        FECatalog(int dimension, bool serendipity);
+        /** @brief @p lagrange_order > 0: the mesh has VTK Lagrange cells of that order, the Lagrange fields may have
+         * any order up to it (equispaced nodal spaces, one DOF per point). */
+        FECatalog(int dimension, bool serendipity, int lagrange_order = 0);
         ~FECatalog();
         /** @brief The collection of a Lagrange (any of the four families) or Nedelec field; aborts otherwise. */
         const mfem::FiniteElementCollection &collection(FEFamily family, int order) const;
@@ -85,6 +88,9 @@ namespace pytec3d::fem
     private:
         int dimension_;
         std::unique_ptr<mfem::FiniteElementCollection> h1_[3];
+        /// The Lagrange orders above 2 (Lagrange cells): equispaced H1 collections, by order.
+        std::map<int, std::unique_ptr<mfem::FiniteElementCollection>> h1_high_;
+        int lagrange_order_ = 0;
         std::unique_ptr<mfem::FiniteElementCollection> nd_;
     };
 
@@ -133,6 +139,8 @@ namespace pytec3d::fem
         /** @brief Global index of local index @p l; -1 when it is not an unknown. */
         PetscInt global(std::size_t l) const { return global_[l]; }
         bool owned(std::size_t l) const { return owned_[l] != 0; }
+        /** @brief +1, or -1 for a Nedelec DOF whose MFEM shape function runs against the caller's orientation. */
+        double edge_sign(std::size_t l) const { return edge_sign_[l]; }
         /** @brief Variable of local index @p l. */
         unsigned int variable_of(std::size_t l) const { return variable_of_[l]; }
         /** @brief Local index of DOF (MFEM vdof) @p vdof of variable @p v. */
@@ -165,7 +173,12 @@ namespace pytec3d::fem
         /** @brief The T-level (true DOF) matrix P_L^T A P_L of the L-level matrix @p A (finalized, n_local square). */
         std::unique_ptr<mfem::HypreParMatrix> assemble(mfem::SparseMatrix &A) const;
         /** @brief The T-vector P_L^T b of the L-vector @p b (element contributions summed over the ranks). */
-        void assemble(const mfem::Vector &b, mfem::Vector &x) const { prolongation_->MultTranspose(b, x); }
+        void assemble(const mfem::Vector &b, mfem::Vector &x) const
+        {
+            x.SetSize(prolongation_->Width());
+            x = 0.0; // hypre forms beta * y with beta = 0: no garbage (inf, NaN) of a new allocation may survive
+            prolongation_->MultTranspose(b, x);
+        }
         /** @brief The L-vector of the T-vector @p x (0 where not an unknown). */
         void gather(const mfem::Vector &x, std::vector<double> &local) const;
         /** @brief Values on the local indices of one element, with the element signs: in its shape functions. */

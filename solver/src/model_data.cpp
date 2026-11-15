@@ -4,6 +4,8 @@
  */
 #include "model_data.h"
 
+#include "expression.h"
+
 #include <cmath>
 #include <set>
 
@@ -125,6 +127,85 @@ namespace pytec3d
             for (std::size_t i = 0; i < entry[key].size(); ++i)
                 values.push_back(finite_number(entry[key][i], context + "." + key + "[" + std::to_string(i) + "]"));
             return values;
+        }
+
+        std::vector<pytec3d::la::Real> read_axis(const json &entry, const std::string &key, const std::string &context)
+        {
+            auto axis = read_curve_array(entry, key, context);
+            if (axis.size() < 2)
+                fail(context + ": '" + key + "' needs at least 2 values.");
+            for (std::size_t i = 1; i < axis.size(); ++i)
+                if (axis[i] <= axis[i - 1])
+                    fail(context + ": '" + key + "' must be strictly increasing.");
+            return axis;
+        }
+
+        /** @brief The values of a table: nested arrays of the shape of the axes, row-major. */
+        void read_table(const json &value, const std::vector<std::vector<pytec3d::la::Real>> &axes, std::size_t level,
+                        const std::string &where, std::vector<pytec3d::la::Real> &out)
+        {
+            if (!value.is_array() || value.size() != axes[level].size())
+                fail(where + " must be an array of " + std::to_string(axes[level].size()) + " entries (the length of "
+                     "its axis " + std::to_string(level + 1) + ").");
+            for (std::size_t i = 0; i < value.size(); ++i)
+            {
+                const std::string item = where + "[" + std::to_string(i) + "]";
+                if (level + 1 == axes.size())
+                    out.push_back(finite_number(value[i], item));
+                else
+                    read_table(value[i], axes, level + 1, item, out);
+            }
+        }
+
+        /**
+         * @brief The curve of a law entry (curve.h): points "<x>", "<y>"; with arguments a table on the axes "<x>",
+         * "<arg>"...; or an analytic law "<y>": "<expression>", "d<y>": "<derivative>". Adds its keys to @p keys.
+         */
+        CurveData read_curve(const json &entry, const registry::CurveSource &curve, const std::string &context,
+                             std::set<std::string> &keys)
+        {
+            const std::string x_key(curve.x), y_key(curve.y), d_key = "d" + std::string(curve.y);
+            std::vector<std::string> variables = {x_key};
+            for (unsigned int k = 0; k < curve.n_args; ++k)
+                variables.emplace_back(curve.args[k]);
+            keys.insert(variables.begin(), variables.end());
+            keys.insert({y_key, d_key});
+            if (entry.contains(y_key) && entry[y_key].is_string())
+            {
+                // An analytic law of x (and the arguments), with its x derivative.
+                if (!entry.contains(d_key) || !entry[d_key].is_string())
+                    fail(context + ": the analytic law '" + y_key + "' needs its derivative in " + x_key + ", '" +
+                         d_key + "': an expression of the same variables.");
+                for (const std::string &v : variables)
+                    if (entry.contains(v))
+                        fail(context + ": '" + v + "' is a variable of the analytic law '" + y_key + "', not an array.");
+                try
+                {
+                    return CurveData::analytic(Expression(entry[y_key].get<std::string>(), variables),
+                                               Expression(entry[d_key].get<std::string>(), variables));
+                }
+                catch (const std::invalid_argument &error)
+                {
+                    fail(context + ": " + error.what());
+                }
+            }
+            if (entry.contains(d_key))
+                fail(context + ": '" + d_key + "' goes with an analytic law '" + y_key + "' (a string), not with arrays.");
+            std::vector<std::vector<pytec3d::la::Real>> axes;
+            for (const std::string &v : variables)
+                axes.push_back(read_axis(entry, v, context));
+            if (curve.n_args == 0)
+            {
+                auto y = read_curve_array(entry, y_key, context);
+                if (y.size() != axes[0].size())
+                    fail(context + ": '" + x_key + "' and '" + y_key + "' must have the same length, at least 2.");
+                return CurveData(std::move(axes[0]), std::move(y));
+            }
+            if (!entry.contains(y_key))
+                fail(context + " needs the table '" + y_key + "' (or an analytic law: a string, with '" + d_key + "').");
+            std::vector<pytec3d::la::Real> values;
+            read_table(entry[y_key], axes, 0, context + "." + y_key, values);
+            return CurveData::table(std::move(axes), std::move(values));
         }
 
         bool read_flag(const json &value, const std::string &context)
@@ -296,16 +377,7 @@ namespace pytec3d
                     for (const registry::CurveId curve_id : law_curves)
                     {
                         const registry::CurveSource &curve = registry::kCurveSources[static_cast<std::size_t>(curve_id)];
-                        const std::string x_key(curve.x), y_key(curve.y);
-                        keys.insert({x_key, y_key});
-                        auto x = read_curve_array(entry, x_key, context);
-                        auto y = read_curve_array(entry, y_key, context);
-                        if (x.size() != y.size() || x.size() < 2)
-                            fail(context + ": '" + x_key + "' and '" + y_key + "' must have the same length, at least 2.");
-                        for (std::size_t i = 1; i < x.size(); ++i)
-                            if (x[i] <= x[i - 1])
-                                fail(context + ": '" + x_key + "' must be strictly increasing.");
-                        data.curves_[static_cast<std::size_t>(curve_id)].emplace(id, CurveData(std::move(x), std::move(y)));
+                        data.curves_[static_cast<std::size_t>(curve_id)].emplace(id, read_curve(entry, curve, context, keys));
                     }
                     for (auto key = entry.begin(); key != entry.end(); ++key)
                         if (!keys.count(key.key()))

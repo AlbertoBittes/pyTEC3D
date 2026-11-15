@@ -42,11 +42,20 @@ Supported cells
        ``VTK_QUADRATIC_WEDGE`` (PRISM15), ``VTK_BIQUADRATIC_QUADRATIC_WEDGE`` (PRISM18), ``VTK_QUADRATIC_PYRAMID``
        (PYRAMID13)
 
+**Arbitrary-order Lagrange cells** (``VTK_LAGRANGE_TRIANGLE``, ``VTK_LAGRANGE_QUADRILATERAL``,
+``VTK_LAGRANGE_TETRAHEDRON``, ``VTK_LAGRANGE_HEXAHEDRON``, ``VTK_LAGRANGE_WEDGE``) of one order p for the whole mesh:
+their (equispaced) points are the geometry of order p and the DOFs of the Lagrange fields of order p, so the nodal
+element types (``AVA3D_nodal``, ``AVA2D_nodal`` and their transient variants) may use ``option2`` up to p, any order
+that divides p (on order-4 cells: 1, 2 or 4). There are no Lagrange pyramids (MFEM has no nodal high-order pyramid),
+and the edge fields stay on quadratic cells (their DOFs are moments, not point values, above the first order). The
+cells must be written in the orientation of VTK (only the linear and quadratic cells are reoriented on import). The
+patch tests ``patch_lagrange`` of the formulations benchmarks check orders 1 to 4 on every shape.
+
 Lines and some Bezier cells are also read. Rules:
 
 * All the cells of a model have the dimension of its element type: 2D cells for a 2D element type, 3D cells for a 3D
   one (no mixed 2D / 3D meshes).
-* An FE order of 2 (``option2 = 2``) needs quadratic cells.
+* An FE order of 2 (``option2 = 2``) needs quadratic cells; an order above 2, Lagrange cells of an order it divides.
 * **Edge elements** (``AVA3D_edge*``, ``TPHI3D_edge``, ``TPHI2D_edge``, ``PHI3D_nodal``: the fields A, T, Hs) need
   quadratic cells: their DOFs are stored on the midside nodes, one per edge. ``TPHI2D_edge`` uses QUAD8 or TRI6
   cells.

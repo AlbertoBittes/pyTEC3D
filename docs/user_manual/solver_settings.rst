@@ -24,6 +24,7 @@ solver, whose algorithm (line search, convergence tests) is that of libMesh's :l
            "max_iterations": 100,        # integer >= 1
            "initial_guess_nonzero": False,
            "factor_solver_type": "mumps",  # package of lu / cholesky; None for the PETSc default
+           "backend": "petsc",           # "petsc" (PETSc KSP) or "mfem" (MFEM / hypre solvers, MUMPSSolver)
        },
        "nonlinear": {                    # Newton solver (models with nonlinear laws)
            "max_iterations": 50,
@@ -76,6 +77,34 @@ preconditioners converge poorly on curl-curl operators, which need auxiliary-spa
 Accepted ``ksp_type`` (:petsc:`KSPType <KSP/KSPType>`): ``preonly gmres fgmres bcgs bcgsl cgs cg minres symmlq lgmres
 ibcgs gcr tfqmr tcqmr cr lsqr bicg richardson chebyshev``. Accepted ``pc_type`` (:petsc:`PCType <PC/PCType>`): ``lu
 cholesky ilu icc asm gasm bjacobi jacobi sor eisenstat hypre ml gamg mg ksp none``.
+
+MFEM backend
+~~~~~~~~~~~~
+
+With ``"backend": "mfem"`` the reduced system is solved by MFEM [MFEM]_ on its hypre matrix, without a PETSc copy of
+it (less memory). The PETSc options (``petsc_options``) do not apply.
+
+* ``preonly`` + ``lu`` (or ``cholesky``, a symmetric matrix): MUMPS through MFEM's ``MUMPSSolver``. The analysis
+  is reused when only the values change, as with PETSc.
+* ``cg``, ``gmres``, ``fgmres``, ``minres`` or ``bcgs`` (MFEM's Krylov solvers) with ``pc_type``:
+
+  - ``boomeramg`` (or ``hypre``): algebraic multigrid, for the nodal (H1) formulations: PHI3D_nodal, AVA3D_nodal,
+    AVA2D_nodal, TPHI2D_edge;
+  - ``ams``: hypre's auxiliary-space Maxwell solver [HiptmairXu2007]_, for curl-curl systems whose DOFs are those of
+    one first-order Nedelec field (AVA3D_edge without conductors, ``option2`` 1). AMS converges in a number of
+    iterations nearly independent of the mesh, *without* a gauge. A tree gauge spoils it (hundreds of iterations),
+    so leave ``_A`` free in the volume. The solver detects the singular, ungauged system (the gradients in its
+    kernel) and removes the gradient part of the right-hand side, so the system is consistent;
+  - ``jacobi``, ``lu`` (MUMPS as preconditioner) or ``none``.
+
+On a 287k-edge magnetostatic model, ``cg`` + ``ams`` without gauge solves in 12 iterations, in 0.6 times the wall
+time and 0.6 times the memory of MUMPS with the tree gauge.
+
+.. code-block:: python
+
+   solver.solver_settings = {"linear": {"backend": "mfem", "ksp_type": "cg", "pc_type": "ams",
+                                        "relative_tolerance": 1e-10, "absolute_tolerance": 1e-30,
+                                        "max_iterations": 500}}
 
 After every linear solve the solver computes the **true residual** :math:`\|b-Ax\|/\|b\|` of the reduced system and
 warns above :math:`10^{-6}`.

@@ -23,7 +23,7 @@ namespace pytec3d
 {
     namespace
     {
-        constexpr std::size_t kTypes = 33; ///< VTK cell type numbers are below this.
+        constexpr std::size_t kTypes = 80; ///< VTK cell type numbers are below this (Lagrange cells: 69 - 73).
 
         using P = std::array<double, 3>;
         P minus(const double *a, const double *b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }

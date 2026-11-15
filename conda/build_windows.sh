@@ -81,7 +81,8 @@ if want mfem && [ ! -f "${MFEM_PREFIX}/lib/libmfem.a" ]; then
   # The compilers themselves, not the MPI wrappers: those of MSYS2 are shell scripts, which the (native) CMake cannot
   # run; MS-MPI is given to FindMPI as for the solver below. The paths in Windows form (C:/...): MFEM records them in
   # its MFEMConfig.cmake, read by the native CMake of the solver.
-  CC=gcc CXX=g++ HYPRE_DIR="$(cygpath -m "${PETSC_PREFIX}")" METIS_DIR="$(cygpath -m "${MINGW}")" \
+  # No MUMPS in MFEM: the MUMPS of MSYS2 has other library names; the solver uses PETSc's MUMPS there.
+  MFEM_MUMPS=OFF CC=gcc CXX=g++ HYPRE_DIR="$(cygpath -m "${PETSC_PREFIX}")" METIS_DIR="$(cygpath -m "${MINGW}")" \
   CPU_COUNT="${CPU_COUNT}" \
   MFEM_CMAKE_EXTRA="-G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_PREFIX_PATH=$(cygpath -m "${MINGW}")
     -DMPI_C_SKIP_MPICXX=ON -DMPI_CXX_SKIP_MPICXX=ON

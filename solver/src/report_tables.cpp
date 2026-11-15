@@ -503,7 +503,8 @@ namespace pytec3d::report
     {
         const LinearSolverSettings &linear = settings.linear;
         Table table("Solver configuration");
-        table.section("Linear solver (PETSc KSP" + std::string(nonlinear ? ", in each Newton iteration)" : ")"))
+        const std::string library = linear.backend == "mfem" ? "MFEM / hypre" : "PETSc KSP";
+        table.section("Linear solver (" + library + std::string(nonlinear ? ", in each Newton iteration)" : ")"))
             .row({"Type", std::string(ksp_name) == "preonly" ? "direct" : "iterative"})
             .row({"KSP", std::string(ksp_name)})
             .row({"Preconditioner", std::string(pc_name)})

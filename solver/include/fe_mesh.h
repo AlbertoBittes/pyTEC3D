@@ -48,8 +48,10 @@ namespace pytec3d::fem
         mfem::ParMesh &mesh() { return *mesh_; }
         const mfem::ParMesh &mesh() const { return *mesh_; }
         int dimension() const { return dimension_; }
-        /** @brief 1: straight cells, 2: quadratic cells. */
+        /** @brief 1: straight cells, 2: quadratic cells, p: Lagrange cells of order p. */
         int geometric_order() const { return geometric_order_; }
+        /** @brief The order of the VTK Lagrange cells of the mesh (0: none): its points are the nodes of order p. */
+        int lagrange_order() const { return lagrange_order_; }
         /** @brief The quadratic cells have no face-centre points (QUAD8, HEX20, PRISM15, PYRAMID13). */
         bool serendipity() const { return serendipity_; }
 
@@ -103,6 +105,7 @@ namespace pytec3d::fem
         int n_ranks_ = 1;
         int dimension_ = 0;
         int geometric_order_ = 1;
+        int lagrange_order_ = 0;
         bool serendipity_ = false;
         std::size_t n_points_ = 0;
         std::size_t n_cells_ = 0;

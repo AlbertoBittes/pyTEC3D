@@ -61,6 +61,8 @@ CELL_VERTICES: dict[int, int] = {
     12: 8, 25: 8, 29: 8,        # hexahedron, quadratic hexahedron, triquadratic hexahedron
     13: 6, 26: 6, 32: 6,        # wedge, quadratic wedge, biquadratic-quadratic wedge
     14: 5, 27: 5,               # pyramid, quadratic pyramid
+    69: 3, 70: 4,               # Lagrange triangle, quadrilateral (any order)
+    71: 4, 72: 8, 73: 6,        # Lagrange tetrahedron, hexahedron, wedge (any order)
 }
 
 #: NumPy types of the views, by role.

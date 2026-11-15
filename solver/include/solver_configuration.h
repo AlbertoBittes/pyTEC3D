@@ -25,13 +25,16 @@ struct LinearSolverSettings
     int max_iterations = 100;
     bool initial_guess_nonzero = false;
     std::string factor_solver_type = "mumps"; ///< Of the lu and cholesky preconditioners; empty: the PETSc default.
+    /// "petsc": the PETSc KSP (the reduced matrix converted); "mfem": MFEM's solvers on the hypre matrix itself (MUMPSSolver
+    /// for lu / cholesky; CG, GMRES, FGMRES, MINRES, BiCGSTAB with hypre's BoomerAMG, AMS or Jacobi).
+    std::string backend = "petsc";
 
     bool operator==(const LinearSolverSettings &other) const
     {
         return ksp_type == other.ksp_type && pc_type == other.pc_type && relative_tolerance == other.relative_tolerance &&
                absolute_tolerance == other.absolute_tolerance && divergence_tolerance == other.divergence_tolerance &&
                max_iterations == other.max_iterations && initial_guess_nonzero == other.initial_guess_nonzero &&
-               factor_solver_type == other.factor_solver_type;
+               factor_solver_type == other.factor_solver_type && backend == other.backend;
     }
     bool operator!=(const LinearSolverSettings &other) const { return !(*this == other); }
 };
@@ -86,6 +89,15 @@ public:
     bool set_settings(const SolverSettings &settings, bool nonlinear);
     /** @brief Applies the tolerances, the options database and the KSP and PC types to @p ksp. */
     void configure(KSP ksp, double rtol);
+    const SolverSettings &settings() const { return settings_; }
+    bool nonlinear() const { return nonlinear_; }
+    /** @brief True once after new settings: the caller prints the configuration table (the MFEM backend). */
+    bool take_report()
+    {
+        const bool pending = report_pending_;
+        report_pending_ = false;
+        return pending;
+    }
 
 private:
     SolverSettings settings_;

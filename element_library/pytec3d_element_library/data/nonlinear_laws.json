@@ -122,6 +122,35 @@
                     "tangent": "r * I + (j > 1e-100 ? (curve.slope(u) / s - r) / (j * j) : 0.0) * outer_product(Jt, Jt)"
                 }
             }
+        },
+        "power_law_jb": {
+            "element_types": [
+                "TPHI3D_edge",
+                "TPHI2D_edge"
+            ],
+            "source": "mat",
+            "input": "Jt",
+            "inputs": [
+                "H"
+            ],
+            "curve": {
+                "x": "J",
+                "y": "E",
+                "args": [
+                    "Bt"
+                ]
+            },
+            "expressions": {
+                "j": "Jt.norm()",
+                "bt": "mu0 * H.norm()",
+                "r": "j > 1e-100 ? curve.value(j, bt) / j : curve.slope(0.0, bt)"
+            },
+            "coefficients": {
+                "rho[][]": {
+                    "secant": "r * I",
+                    "tangent": "r * I + (j > 1e-100 ? (curve.slope(j, bt) - r) / (j * j) : 0.0) * outer_product(Jt, Jt)"
+                }
+            }
         }
     }
 }

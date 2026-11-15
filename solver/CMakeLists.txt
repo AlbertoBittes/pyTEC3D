@@ -83,6 +83,7 @@ set(SOURCES
   "${SOURCE_DIR}/logging.cpp"
   "${SOURCE_DIR}/mesh_quality.cpp"
   "${SOURCE_DIR}/model_data.cpp"
+  "${SOURCE_DIR}/expression.cpp"
   "${SOURCE_DIR}/model_input.cpp"
   "${SOURCE_DIR}/nabla.cpp"
   "${SOURCE_DIR}/parameter_value.cpp"

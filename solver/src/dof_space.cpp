@@ -53,11 +53,14 @@ namespace pytec3d::fem
 
     // ---- FECatalog -------------------------------------------------------------------------------------------------
 
-    FECatalog::FECatalog(int dimension, bool serendipity) : dimension_(dimension)
+    FECatalog::FECatalog(int dimension, bool serendipity, int lagrange_order)
+        : dimension_(dimension), lagrange_order_(lagrange_order)
     {
         h1_[1] = std::make_unique<mfem::H1_FECollection>(1, dimension);
         h1_[2] = std::make_unique<QuadraticH1Collection>(dimension, serendipity);
         nd_ = std::make_unique<mfem::ND_FECollection>(1, dimension);
+        for (int p = 3; p <= lagrange_order; ++p)
+            h1_high_.emplace(p, std::make_unique<mfem::H1_FECollection>(p, dimension, mfem::BasisType::ClosedUniform));
     }
 
     FECatalog::~FECatalog() = default;
@@ -70,8 +73,12 @@ namespace pytec3d::fem
         case FEFamily::LAGRANGE_VEC:
         case FEFamily::L2_LAGRANGE:
         case FEFamily::L2_LAGRANGE_VEC:
+            if (order >= 3 && h1_high_.count(order))
+                return *h1_high_.at(order);
             if (order < 1 || order > 2)
-                fail("Lagrange fields of order " + std::to_string(order) + ": the orders are 1 and 2.");
+                fail("Lagrange fields of order " + std::to_string(order) + ": the orders are 1 and 2, and up to the order "
+                     "of the cells on a mesh of VTK Lagrange cells (" +
+                     (lagrange_order_ > 0 ? "here " + std::to_string(lagrange_order_) : std::string("none here")) + ").");
             return *h1_[order];
         case FEFamily::NEDELEC_ONE:
             if (order != 1)
@@ -415,6 +422,7 @@ namespace pytec3d::fem
     void DofSpace::gather(const mfem::Vector &x, std::vector<double> &local) const
     {
         mfem::Vector l(static_cast<int>(global_.size()));
+        l = 0.0; // hypre forms beta * y with beta = 0
         prolongation_->Mult(x, l);
         local.assign(l.GetData(), l.GetData() + l.Size());
     }

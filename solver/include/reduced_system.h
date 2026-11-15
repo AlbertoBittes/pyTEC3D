@@ -7,7 +7,11 @@
  * chains of masters followed), g the resolved values. A system K u = f becomes (P^T K P) w = P^T (f - K g) (hypre RAP),
  * a Newton step on u the step on w with P^T J P and the residual P^T r: the constraints hold exactly.
  *
- * The reduced matrix goes to the PETSc linear solver (KSP: the solver settings, MUMPS for the direct factorizations).
+ * The reduced matrix goes to the linear solver of the settings: the PETSc KSP (backend "petsc": the matrix converted,
+ * MUMPS for the direct factorizations), or MFEM's solvers on the hypre matrix (backend "mfem": MUMPSSolver for lu /
+ * cholesky, the Krylov solvers of MFEM with hypre's BoomerAMG, AMS or Jacobi). AMS (curl-curl systems) needs the free
+ * DOFs to be those of one first-order Nedelec variable: its discrete gradient is MFEM's (ParDiscreteLinearOperator)
+ * in the reduced numbering, with the orientation of the DOFs.
  * Each solve does the least factorization work:
  *   - reused: the same matrix: only the triangular solves;
  *   - numeric: new values with the same pattern (a Newton iteration, a new time step size or scheme): the PETSc matrix is
@@ -67,11 +71,21 @@ public:
     /** @brief u = P w + g. */
     void expand(const mfem::Vector &w, mfem::Vector &u) const;
     /** @brief u = P w (a step: homogeneous constraints). */
-    void prolong(const mfem::Vector &w, mfem::Vector &u) const { P_->Mult(w, u); }
+    void prolong(const mfem::Vector &w, mfem::Vector &u) const
+    {
+        u.SetSize(P_->Height());
+        u = 0.0; // hypre forms beta * y with beta = 0: no garbage (inf, NaN) of a new allocation may survive
+        P_->Mult(w, u);
+    }
     /** @brief The free DOFs of @p u. */
     void restrict_to_free(const mfem::Vector &u, mfem::Vector &w) const;
     /** @brief w = P^T f. */
-    void project(const mfem::Vector &f, mfem::Vector &w) const { P_->MultTranspose(f, w); }
+    void project(const mfem::Vector &f, mfem::Vector &w) const
+    {
+        w.SetSize(P_->Width());
+        w = 0.0; // see prolong()
+        P_->MultTranspose(f, w);
+    }
     /** @brief The values g of the constrained DOFs, zero elsewhere (T-vector). */
     const mfem::Vector &offset() const { return g_; }
 
@@ -87,13 +101,20 @@ public:
     /** @brief ||rhs - Khat x|| / ||rhs|| (all ranks); -1 for a zero rhs. */
     double relative_true_residual(const mfem::Vector &x, const mfem::Vector &rhs) const;
 
+    /** @brief The PETSc KSP (null with the MFEM backend). */
     KSP ksp() const { return ksp_; }
+    bool mfem_backend() const { return configuration_.settings().linear.backend == "mfem"; }
     KSPConvergedReason converged_reason() const;
     Factorization last_factorization() const { return last_; }
     const Counts &counts() const { return counts_; }
 
 private:
     void clear_ksp();
+    /** @brief The MFEM solver and preconditioner of the settings on Khat_ (a full or numeric factorization). */
+    void setup_mfem_solver(double rtol);
+    std::pair<unsigned int, double> solve_mfem(const mfem::Vector &rhs, mfem::Vector &solution, double rtol);
+    /** @brief AMS of Khat_: the discrete gradient and vertex coordinates in the reduced numbering. */
+    std::unique_ptr<mfem::Solver> make_ams();
     /** @brief The PETSc matrix of Khat_: in place when the pattern is that of the previous one. */
     void update_petsc_matrix();
 
@@ -110,6 +131,18 @@ private:
     std::unique_ptr<mfem::HypreParMatrix> Khat_; ///< P^T K P while it is moved into A_.
     bool khat_new_ = true;     ///< Khat_ has a new pattern: full factorization.
     bool khat_changed_ = true; ///< Khat_ has new values since the last solve.
+
+    std::unique_ptr<mfem::Solver> mfem_solver_;    ///< MUMPSSolver or a Krylov solver (backend "mfem").
+    std::unique_ptr<mfem::Solver> mfem_prec_;      ///< Its preconditioner.
+    std::unique_ptr<mfem::HypreParMatrix> mfem_A_; ///< Khat_ kept for the MFEM backend (the solvers reference it).
+    bool mfem_converged_ = true;
+    /// Singular AMS (ungauged curl-curl): the gradients of the interior vertices, their Laplacian G^T G and its solver,
+    /// to take the gradient part out of each right-hand side (the system is consistent then).
+    std::unique_ptr<mfem::HypreParMatrix> kernel_G_, kernel_L_;
+    std::unique_ptr<mfem::HypreBoomerAMG> kernel_amg_;
+    std::unique_ptr<mfem::CGSolver> kernel_cg_;
+    mfem::Vector consistent_rhs_; ///< The right-hand side of the last singular solve (the true residual's).
+    bool projected_ = false;
 
     Mat A_ = nullptr; ///< Khat_ as a PETSc matrix.
     std::vector<PetscInt> csr_i_, csr_j_;

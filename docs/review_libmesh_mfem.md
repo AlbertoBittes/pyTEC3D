@@ -159,3 +159,30 @@ Windows form, since MFEMConfig.cmake records them. The static link order (MFEM -
 `PETSC_STATIC_LDFLAGS` in `solver/CMakeLists.txt`. The solver uses only MPI-2 calls, which MS-MPI supports.
 
 None of this has been run on Windows yet: the first CI run will show whether MFEM 4.9 builds with MinGW / MS-MPI.
+
+## 6. MFEM capabilities added after the review (MFEM branch)
+
+- **Linear solvers on the hypre matrix** (`solver_settings["linear"]["backend"] = "mfem"`): MUMPS through MFEM's
+  `MUMPSSolver` (MFEM built with `MFEM_USE_MUMPS`, `solver/mfem/build_mfem.sh`). The analysis is reused on the same
+  pattern, so the factorization counts match the PETSc path. On ITER_3D: the same time, 0.1 GB less memory (no PETSc
+  copy of the matrix). MFEM's Krylov solvers (cg, gmres, fgmres, minres, bcgs) with hypre BoomerAMG, AMS, Jacobi or
+  MUMPS as preconditioner.
+- **AMS for curl-curl systems.** The discrete gradient comes from MFEM's `ParDiscreteLinearOperator`, mapped to the
+  reduced numbering with the DOF orientations. An ungauged (singular) system is detected by a random probe of K·G on
+  the interior vertices; AMS then runs singular, and the gradient part of the right-hand side is removed
+  (f − G (GᵀG)⁻¹ Gᵀ f), so the system is consistent. On 287k edges: 12 CG iterations (independent of the mesh),
+  0.6× the wall time and 0.6× the memory of MUMPS. A tree gauge spoils AMS (223 iterations): leave A ungauged with
+  AMS. Tests: `tests/test_linear_backends.py`.
+- **Arbitrary order on VTK Lagrange cells** (types 69–73, one order p per mesh). The geometry of order p is set as
+  MFEM nodes (equispaced H1). The DOFs of order-p Lagrange fields map to the cell points through MFEM's own VTK
+  Lagrange ordering (`CreateVTKElementConnectivity`). `option2` can be any order dividing p, for the nodal element
+  types. Not possible: pyramids above order 2 (MFEM has no nodal high-order pyramid) and Nedelec above order 1/2
+  (moment DOFs, not point values). Tests: the `patch_lagrange` case (58 checks; the polynomial patch is exact only
+  in the complete order-p space).
+- **A latent bug fixed:** several hypre products wrote into new, uninitialized vectors (y = 0·y + A x). hypre
+  computes 0·y, so an inf or NaN left in fresh memory survived as NaN. The visible effect was an intermittent NaN
+  right-hand side (`sphere_coil_3D_period`, about 1 run in 8 under load). The outputs are now zeroed before every
+  such product.
+- **Still not used, by design:** partial assembly, element assembly and device kernels (single-geometry meshes only
+  in MFEM, no serendipity cells), and `mfem::NewtonSolver` (the libMesh-identical Newton, Brent line search
+  included, is kept).

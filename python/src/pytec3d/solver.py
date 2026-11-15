@@ -49,6 +49,9 @@ DEFAULT_SOLVER_SETTINGS: dict[str, Any] = {
         "max_iterations": 100,
         "initial_guess_nonzero": False,
         "factor_solver_type": "mumps",  # of lu / cholesky; None for the PETSc default
+        # "petsc": the PETSc KSP; "mfem": MFEM's solvers on the hypre matrix (MUMPSSolver for lu / cholesky; cg,
+        # gmres, fgmres, minres, bcgs with boomeramg, ams, jacobi, lu or none)
+        "backend": "petsc",
     },
     "nonlinear": {
         "max_iterations": 50,

@@ -42,6 +42,13 @@ PC_TYPES = frozenset({
     "mg", "ksp", "none",
 })
 
+#: The highest FE order (option2): above 2, the Lagrange fields of a mesh of VTK Lagrange cells of that order.
+MAX_FE_ORDER = 8
+
+#: KSP and PC types of the MFEM backend (linear.backend = "mfem").
+MFEM_KSP_TYPES = frozenset({"preonly", "cg", "gmres", "fgmres", "minres", "bcgs"})
+MFEM_PC_TYPES = frozenset({"lu", "cholesky", "boomeramg", "hypre", "ams", "jacobi", "none"})
+
 #: Shapes a parameter of each type may have: a number stands for a vector with equal components.
 _SHAPES: dict[str, list[tuple[int, ...]]] = {"scalar": [()], "vector": [(), (3,)], "tensor": [(3, 3)]}
 _SHAPE_NAMES = {"scalar": "a number", "vector": "a number or 3 numbers", "tensor": "a 3x3 array"}
@@ -115,6 +122,7 @@ def check_solver_settings(settings: Mapping[str, Any]) -> None:
     * ``linear``: ``ksp_type`` and ``pc_type`` names of :data:`KSP_TYPES` and :data:`PC_TYPES`; tolerances finite
       and > 0, the absolute one not above the relative one; ``divergence_tolerance`` None or > 0;
       ``max_iterations`` >= 1; ``initial_guess_nonzero`` a bool; ``factor_solver_type`` None or a name;
+      ``backend`` "petsc" or "mfem" (then the types of :data:`MFEM_KSP_TYPES` and :data:`MFEM_PC_TYPES`);
     * ``nonlinear``: ``max_iterations`` >= 1; tolerances finite and >= 0; ``minimum_step_length`` in (0, 1];
       ``linear_tolerance_multiplier`` > 0; the switches bools;
     * ``petsc_options``: names starting with "-", values strings or numbers.
@@ -157,7 +165,12 @@ def check_solver_settings(settings: Mapping[str, Any]) -> None:
                 problems.append(f"{name}.{key} must be a bool, got {values.get(key)!r}.")
 
     linear = group("linear")
-    for key, allowed in (("ksp_type", KSP_TYPES), ("pc_type", PC_TYPES)):
+    backend = linear.get("backend", "petsc")
+    if backend not in ("petsc", "mfem"):
+        problems.append(f"linear.backend must be 'petsc' or 'mfem', got {backend!r}.")
+    mfem = backend == "mfem"
+    for key, allowed in (("ksp_type", MFEM_KSP_TYPES if mfem else KSP_TYPES),
+                         ("pc_type", MFEM_PC_TYPES if mfem else PC_TYPES)):
         value = linear.get(key)
         if not isinstance(value, str) or value not in allowed:
             problems.append(f"linear.{key} {value!r} is not supported; use one of {sorted(allowed)}.")
@@ -500,8 +513,9 @@ class _ModelChecker:
                     f" {self.domains}; got {row['option1']!r}."
                 )
             order = row.get("option2", 1)
-            if isinstance(order, bool) or order not in (1, 2):
-                self.problems.append(f"{label}: option2 (FE order) must be 1 or 2; got {order!r}.")
+            if isinstance(order, bool) or not isinstance(order, (int, np.integer)) or not 1 <= order <= MAX_FE_ORDER:
+                self.problems.append(f"{label}: option2 (FE order) must be an integer in [1, {MAX_FE_ORDER}] (above 2:"
+                                     f" the Lagrange fields on VTK Lagrange cells of that order); got {order!r}.")
             axisymmetric = row.get("option3", 0)
             if axisymmetric not in (0, 1):
                 self.problems.append(f"{label}: option3 (axisymmetric) must be 0 or 1; got {axisymmetric!r}.")
@@ -513,14 +527,15 @@ class _ModelChecker:
                         f"{label}: the domain {self.domains[domain]} (option1) is not one of the domains of"
                         f" {type_name}: {supported}."
                     )
-            if element_type is not None and domain is not None and order in (1, 2) and axisymmetric in (0, 1):
+            if (element_type is not None and domain is not None and isinstance(order, (int, np.integer))
+                    and 1 <= order <= MAX_FE_ORDER and axisymmetric in (0, 1)):
                 resolved[type_id] = {"element_type": element_type, "axisymmetric": int(axisymmetric)}
 
         # Types that cannot run second order ("second_order": false in the library, e.g. T-phi: its PHI gradients must
         # lie in the first-order Nedelec space of T and Hs, the Whitney pair).
         library = element_library.element_types()
         for type_id, row in rows.items():
-            if not isinstance(row, Mapping) or row.get("option2", 1) != 2:
+            if not isinstance(row, Mapping) or row.get("option2", 1) in (1, None):
                 continue
             index = self.registry_index(row.get("element_type"), self.element_type_names)
             if index is None:
@@ -627,20 +642,53 @@ class _ModelChecker:
                 seen.add(name)
                 curve = self.laws[name].get("curve")
                 curves = ([tuple(curve)] if curve else []) + [tuple(c) for c in self.laws[name].get("curves", [])]
-                expected = {"type", *(a for c in curves for a in c)}
+                expected = {"type", *(a for c in curves for a in c), *("d" + c[1] for c in curves)}
                 unknown = sorted(set(entry) - expected)
                 if unknown:
                     self.problems.append(
                         f"{label}: unknown keys {unknown} for the law '{name}'; expected {sorted(expected)}."
                     )
-                for x_key, y_key in curves:
-                    self.curve(entry, x_key, y_key, label)
+                for x_key, y_key, *args in curves:
+                    self.curve(entry, x_key, y_key, label, args)
                 source = self.laws[name]["source"]
                 if cell_ids[source].size and row_id not in set(np.unique(cell_ids[source]).tolist()):
                     LOGGER.warning("%s: no cell has the %s id %d.", label, source.rstrip("s").replace("_", " "), row_id)
 
-    def curve(self, entry: Mapping[str, Any], x_key: str, y_key: str, label: str) -> None:
-        """The x and y arrays of a law: numeric, finite, same length >= 2, x strictly increasing."""
+    def curve(self, entry: Mapping[str, Any], x_key: str, y_key: str, label: str, args: list[str] | None = None) -> None:
+        """A curve of a law (curve.h): the x and y arrays (numeric, finite, same length >= 2, x strictly increasing);
+        with arguments a table (the axes x and the arguments, each strictly increasing, y of their shape); or an
+        analytic law, y and its x derivative "d<y>" expressions (strings; parsed by the solver)."""
+        args = args or []
+        d_key = "d" + y_key
+        if isinstance(entry.get(y_key), str):
+            if not isinstance(entry.get(d_key), str):
+                self.problems.append(f"{label}: the analytic law '{y_key}' needs its derivative in {x_key}, "
+                                     f"'{d_key}' (an expression of {[x_key, *args]}).")
+            for key in (x_key, *args):
+                if key in entry:
+                    self.problems.append(f"{label}: '{key}' is a variable of the analytic law '{y_key}', not an array.")
+            return
+        if d_key in entry:
+            self.problems.append(f"{label}: '{d_key}' goes with an analytic law '{y_key}' (a string), not with arrays.")
+        if args:
+            axes = []
+            for key in (x_key, *args):
+                try:
+                    axis = np.asarray(entry.get(key), dtype=float)
+                except (TypeError, ValueError):
+                    axis = np.zeros(0)
+                if axis.ndim != 1 or axis.size < 2 or not np.all(np.isfinite(axis)) or np.any(np.diff(axis) <= 0.0):
+                    self.problems.append(f"{label}: '{key}' must be a strictly increasing array of >= 2 finite values.")
+                    return
+                axes.append(axis.size)
+            try:
+                table = np.asarray(entry.get(y_key), dtype=float)
+            except (TypeError, ValueError):
+                table = np.zeros(0)
+            if table.shape != tuple(axes) or not np.all(np.isfinite(table)):
+                self.problems.append(f"{label}: '{y_key}' must be a table of finite values of shape {tuple(axes)} "
+                                     f"(the lengths of {[x_key, *args]}), or an analytic law.")
+            return
         if not all(isinstance(entry.get(key), list) for key in (x_key, y_key)):
             self.problems.append(f"{label}: needs the arrays '{x_key}' and '{y_key}'.")
             return

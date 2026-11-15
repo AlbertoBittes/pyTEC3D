@@ -98,6 +98,12 @@ namespace pytec3d
         constexpr int BIQUADRATIC_QUAD = 28;
         constexpr int TRIQUADRATIC_HEXAHEDRON = 29;
         constexpr int BIQUADRATIC_QUADRATIC_WEDGE = 32;
+        // Arbitrary-order Lagrange cells (one point per DOF of the order-p Lagrange space, equispaced).
+        constexpr int LAGRANGE_TRIANGLE = 69;
+        constexpr int LAGRANGE_QUADRILATERAL = 70;
+        constexpr int LAGRANGE_TETRAHEDRON = 71;
+        constexpr int LAGRANGE_HEXAHEDRON = 72;
+        constexpr int LAGRANGE_WEDGE = 73;
     } // namespace cell_type
 
     /** @brief The mesh: points and cells (see the file comment). */
