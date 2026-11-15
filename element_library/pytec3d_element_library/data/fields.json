@@ -14,5 +14,17 @@
     "PHI": "scalar",
     "T": "vector",
     "E": "vector",
-    "Hs": "vector"
+    "Hs": "vector",
+    "TEMP": "scalar",
+    "TC": "scalar",
+    "HEAT": "scalar",
+    "QV": "scalar",
+    "HFLUX": "vector",
+    "GRADT": "vector",
+    "U": "vector",
+    "FORCE": "vector",
+    "FB": "vector",
+    "SX": "vector",
+    "SY": "vector",
+    "SZ": "vector"
 }

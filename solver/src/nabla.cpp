@@ -104,6 +104,7 @@ namespace pytec3d
                 return;
             }
             case Operator::Div:
+            case Operator::SymGrad:
                 break;
             }
             fail("operator not defined on a scalar FE.");
@@ -160,6 +161,15 @@ namespace pytec3d
                         table[qp][i] = dphi[i][qp];
                 return;
             }
+            case Operator::SymGrad:
+            {
+                const auto &dphi = fe.get_dphi();
+                auto &table = shaped<RealTensorValue>(out, spec.output, nq, n);
+                for (unsigned int qp = 0; qp < nq; ++qp)
+                    for (std::size_t i = 0; i < n; ++i)
+                        table[qp][i] = 0.5 * (dphi[i][qp] + dphi[i][qp].transpose());
+                return;
+            }
             }
             fail("unknown operator.");
         }
@@ -192,10 +202,10 @@ namespace pytec3d
                 vector_fe.get_curl_phi();
             else if (spec.op == Operator::Div)
                 vector_fe.get_div_phi();
-            else if (spec.op == Operator::Grad)
+            else if (spec.op == Operator::Grad || spec.op == Operator::SymGrad)
             {
                 if (axisymmetric)
-                    fail("grad of a vector field is not defined on axisymmetric elements.");
+                    fail("grad and sym_grad of a vector field are not defined on axisymmetric elements.");
                 vector_fe.get_dphi();
             }
         }

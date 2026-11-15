@@ -7,6 +7,8 @@
         "CIRCUIT_COUPLED_CONDUCTOR",
         "SOLID_CONDUCTOR",
         "STRANDED_COIL",
-        "CUT_LAYER"
+        "CUT_LAYER",
+        "THERMAL",
+        "ELASTIC"
     ]
 }

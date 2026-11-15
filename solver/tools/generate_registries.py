@@ -152,7 +152,7 @@ CPP_TYPE = {S: "Real", V: "RealVectorValue", T: "RealTensorValue"}
 MAX_DOMAINS = 64  # A set of domains is a 64-bit mask.
 COMPONENTS = ("x", "y", "z")
 FIELD_KINDS = {"dof": "Dof", "nodal": "Nodal", "element": "Element"}
-OPERATORS = {"grad": "Grad", "curl": "Curl", "div": "Div"}
+OPERATORS = {"grad": "Grad", "curl": "Curl", "div": "Div", "sym_grad": "SymGrad"}
 # Where a dof kernel goes: stiffness (or time-derivative) matrices, right-hand side.
 DOF_TARGETS = ("K", "F")
 # The model data rows a law is selected by: materials, real constants, element types (TYPE).
@@ -167,7 +167,7 @@ FE_OF_FAMILY = {"LAGRANGE": "LAGRANGE", "L2_LAGRANGE": "LAGRANGE",
 # source; (coefficient, trial) -> value for a term without test.
 BLOCK_PRODUCTS = {(S, S, S), (V, S, V), (V, T, V), (S, V, V), (V, V, S), (T, S, T)}
 SOURCE_PRODUCTS = {(S, S), (V, V), (T, T)}
-VALUE_PRODUCTS = {(S, S): S, (S, V): V, (S, T): T, (T, V): V, (V, S): V}
+VALUE_PRODUCTS = {(S, S): S, (S, V): V, (S, T): T, (T, V): V, (V, S): V, (V, T): V}
 
 
 def fail(message):
@@ -639,7 +639,7 @@ class ElementType:
                 output = V  # the curl of an in-plane NEDELEC_ONE field of a 2D element: its out-of-plane component
             elif operator == "Div" and not nedelec:
                 output = S
-            elif operator == "Grad" and not nedelec:
+            elif operator in ("Grad", "SymGrad") and not nedelec:
                 output = T
             else:
                 fail(f"{context}: {name} is not defined for {fe['family']} on a {self.dimension}D element.")

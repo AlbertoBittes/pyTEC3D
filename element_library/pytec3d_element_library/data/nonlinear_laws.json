@@ -151,6 +151,27 @@
                     "tangent": "r * I + (j > 1e-100 ? (curve.slope(j, bt) - r) / (j * j) : 0.0) * outer_product(Jt, Jt)"
                 }
             }
+        },
+        "conductivity_t": {
+            "element_types": [
+                "TH2D_nodal",
+                "TH3D_nodal"
+            ],
+            "source": "mat",
+            "input": "TC",
+            "curve": {
+                "x": "T",
+                "y": "k"
+            },
+            "expressions": {
+                "ks": "curve.value(TC)"
+            },
+            "coefficients": {
+                "kt[][]": {
+                    "secant": "ks * I",
+                    "tangent": "ks * I"
+                }
+            }
         }
     }
 }

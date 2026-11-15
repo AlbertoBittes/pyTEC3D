@@ -495,6 +495,10 @@ namespace
             laws[py::str(std::string(reg::kLawIdNames[i]))] = law;
         }
         out["laws"] = laws;
+        // What this solver can do beyond the common model (the benchmark suites skip the cases needing more).
+        py::list capabilities;
+        capabilities.append("thermomech"); // the thermal (TH2D/3D_nodal) and linear elastic (EL2D/3D_nodal) types
+        out["capabilities"] = capabilities;
         return out;
     }
 } // namespace
