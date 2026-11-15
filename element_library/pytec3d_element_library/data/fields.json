@@ -26,5 +26,8 @@
     "FB": "vector",
     "SX": "vector",
     "SY": "vector",
-    "SZ": "vector"
+    "SZ": "vector",
+    "EX": "vector",
+    "EY": "vector",
+    "EZ": "vector"
 }

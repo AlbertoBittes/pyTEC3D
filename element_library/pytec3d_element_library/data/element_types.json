@@ -604,7 +604,11 @@
                 "two_mu_ey[]": "two_mu * RealVectorValue(0, 1, 0)",
                 "lambda_ey[]": "lambda_l * RealVectorValue(0, 1, 0)",
                 "two_mu_ez[]": "two_mu * RealVectorValue(0, 0, 1)",
-                "lambda_ez[]": "(plane_stress > 0.5 ? 0.0 : lambda_3d) * RealVectorValue(0, 0, 1)"
+                "lambda_ez[]": "(plane_stress > 0.5 ? 0.0 : lambda_3d) * RealVectorValue(0, 0, 1)",
+                "ex[]": "RealVectorValue(1, 0, 0)",
+                "ey[]": "RealVectorValue(0, 1, 0)",
+                "ez[]": "RealVectorValue(0, 0, 1)",
+                "eps_zz_ez[]": "(plane_stress > 0.5 ? -nu_p / (1 - nu_p) : 0.0) * RealVectorValue(0, 0, 1)"
             },
             "dof_fields": {
                 "U": {
@@ -642,6 +646,13 @@
                     "active_components": [
                         "z"
                     ]
+                },
+                "EX": {},
+                "EY": {},
+                "EZ": {
+                    "active_components": [
+                        "z"
+                    ]
                 }
             },
             "element_kernels": {
@@ -670,6 +681,86 @@
                         "trial": "div(U)",
                         "coeff": "lambda_ez"
                     }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "div(U)",
+                        "coeff": "eps_zz_ez"
+                    }
+                ]
+            },
+            "nodal_fields": {
+                "SX": {},
+                "SY": {},
+                "SZ": {
+                    "active_components": [
+                        "z"
+                    ]
+                },
+                "EX": {},
+                "EY": {},
+                "EZ": {
+                    "active_components": [
+                        "z"
+                    ]
+                }
+            },
+            "nodal_kernels": {
+                "SX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ex"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ex"
+                    }
+                ],
+                "SY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ey"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ey"
+                    }
+                ],
+                "SZ": [
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ez"
+                    }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "div(U)",
+                        "coeff": "eps_zz_ez"
+                    }
                 ]
             }
         },
@@ -695,7 +786,10 @@
                 "two_mu_ey[]": "two_mu * RealVectorValue(0, 1, 0)",
                 "lambda_ey[]": "lambda_l * RealVectorValue(0, 1, 0)",
                 "two_mu_ez[]": "two_mu * RealVectorValue(0, 0, 1)",
-                "lambda_ez[]": "lambda_l * RealVectorValue(0, 0, 1)"
+                "lambda_ez[]": "lambda_l * RealVectorValue(0, 0, 1)",
+                "ex[]": "RealVectorValue(1, 0, 0)",
+                "ey[]": "RealVectorValue(0, 1, 0)",
+                "ez[]": "RealVectorValue(0, 0, 1)"
             },
             "dof_fields": {
                 "U": {
@@ -725,7 +819,10 @@
             "element_fields": {
                 "SX": {},
                 "SY": {},
-                "SZ": {}
+                "SZ": {},
+                "EX": {},
+                "EY": {},
+                "EZ": {}
             },
             "element_kernels": {
                 "SX": [
@@ -756,6 +853,82 @@
                     {
                         "trial": "div(U)",
                         "coeff": "lambda_ez"
+                    }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ez"
+                    }
+                ]
+            },
+            "nodal_fields": {
+                "SX": {},
+                "SY": {},
+                "SZ": {},
+                "EX": {},
+                "EY": {},
+                "EZ": {}
+            },
+            "nodal_kernels": {
+                "SX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ex"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ex"
+                    }
+                ],
+                "SY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ey"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ey"
+                    }
+                ],
+                "SZ": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ez"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ez"
+                    }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ez"
                     }
                 ]
             }

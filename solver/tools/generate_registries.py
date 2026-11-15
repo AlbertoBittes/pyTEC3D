@@ -165,7 +165,7 @@ FE_OF_FAMILY = {"LAGRANGE": "LAGRANGE", "L2_LAGRANGE": "LAGRANGE",
 
 # Products of the kernels: (test, coefficient, trial) -> Real for a block; (test, coefficient) -> Real for a
 # source; (coefficient, trial) -> value for a term without test.
-BLOCK_PRODUCTS = {(S, S, S), (V, S, V), (V, T, V), (S, V, V), (V, V, S), (T, S, T)}
+BLOCK_PRODUCTS = {(S, S, S), (V, S, V), (V, T, V), (S, V, V), (V, V, S), (T, S, T), (V, V, T)}
 SOURCE_PRODUCTS = {(S, S), (V, V), (T, T)}
 VALUE_PRODUCTS = {(S, S): S, (S, V): V, (S, T): T, (T, V): V, (V, S): V, (V, T): V}
 

@@ -627,9 +627,24 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
         if (pairs_it == pairs_by_cp.end() || pairs_it->second.empty())
             continue;
 
+        // "U[x]": only the x component (in the nodal frame of the master node) of the vector field U is coupled,
+        // n . u_slave = n . u_master with n that axis of the master's frame (e.g. a frictionless contact).
+        std::string field_name = variable;
+        int only_component = -1;
+        if (variable.size() > 3 && variable.back() == ']' && variable[variable.size() - 3] == '[')
+        {
+            const char axis = variable[variable.size() - 2];
+            only_component = axis == 'x' ? 0 : axis == 'y' ? 1 : axis == 'z' ? 2 : -1;
+            if (only_component < 0)
+                pytec3d::logging::error_and_abort("Dof couplings: '" + variable + "': the component is x, y or z.");
+            field_name = variable.substr(0, variable.size() - 3);
+        }
         std::map<std::string, std::vector<VariablesMap::VectorComponent>> coupled_vectors;
         std::unordered_set<std::string> coupled_labels;
-        build_coupled_groups(variable, coupled_vectors, coupled_labels);
+        build_coupled_groups(field_name, coupled_vectors, coupled_labels);
+        if (only_component >= 0 && (coupled_vectors.empty() || !coupled_labels.empty()))
+            pytec3d::logging::error_and_abort("Dof couplings: '" + variable + "': a component is coupled only for a "
+                                              "vector field (with all its components).");
         if (coupled_vectors.empty() && coupled_labels.empty())
             continue;
 
@@ -739,6 +754,32 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
                     pytec3d::logging::error_and_abort(msg.str());
                 }
 
+                if (only_component >= 0)
+                {
+                    // n . u_second = n . u_first, n the axis of the master's frame, solved for the component k of
+                    // the slave with the largest |n_k| (the others of the slave stay free).
+                    if (static_cast<unsigned int>(only_component) >= n_field_components)
+                        pytec3d::logging::error_and_abort("Dof couplings: '" + variable + "': the field has no such "
+                                                          "component on these (2D) elements.");
+                    RealVectorValue n;
+                    for (unsigned int j = 0; j < 3; ++j)
+                        n(j) = first_local_to_global(j, static_cast<unsigned int>(only_component));
+                    unsigned int k = 0;
+                    for (unsigned int j = 1; j < n_field_components; ++j)
+                        if (std::abs(n(j)) > std::abs(n(k)))
+                            k = j;
+                    ConstraintEntry constraint_entry;
+                    for (unsigned int j = 0; j < n_field_components; ++j)
+                    {
+                        if (n(j) == 0.0)
+                            continue;
+                        constraint_entry.row[dofs_first[j]] += n(j) / n(k);
+                        if (j != k)
+                            constraint_entry.row[dofs_second[j]] -= n(j) / n(k);
+                    }
+                    constraints.emplace(dofs_second[k], constraint_entry);
+                    continue;
+                }
                 for (unsigned int i = 0; i < n_field_components; ++i)
                 {
                     ConstraintEntry constraint_entry;
