@@ -22,6 +22,7 @@ from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
 
 from . import mesh as meshes
 from . import solver_input
+from .tensor_fields import compose_tensor_fields
 from ._logging import close_log_file, get_logger, message_counts, open_log_file, world_rank
 from ._report import Table, print_table, provenance_table
 from ._typing import Location, PathType
@@ -556,6 +557,7 @@ class Solver:
         start = time.perf_counter()
         self._session.set_arrays(solver_input.model_arrays(self.model))
         self._session.solve(step, settings)
+        compose_tensor_fields(self.model.mesh)  # SIGMA, EPS: 9-component arrays from the rows of the solver
         self.model.mesh.Modified()
         seconds = time.perf_counter() - start
         LOGGER.info("t = %g solved in %.2f s.", step["time"], seconds)

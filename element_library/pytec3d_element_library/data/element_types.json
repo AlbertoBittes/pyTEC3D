@@ -422,6 +422,516 @@
                       {"trial": "grad(PHI)", "coeff": "-"}],
                 "Jt": [{"trial": "curl(T)", "domain": ["SOLID_CONDUCTOR"]}]
             }
+        },
+        "TH2D_nodal": {
+            "dimension": 2,
+            "domains": [
+                "THERMAL"
+            ],
+            "time_order": 1,
+            "out_of_plane_length": "thickness",
+            "parameters": {
+                "mat.kt[][]": {},
+                "mat.rho_cp": {
+                    "default": 0
+                },
+                "me.QV": {},
+                "mn.HEAT": {},
+                "rc.thickness": {
+                    "default": 1
+                }
+            },
+            "dof_fields": {
+                "TEMP": {
+                    "nodal_loads": "HEAT"
+                }
+            },
+            "dof_kernels": {
+                "K": [
+                    {
+                        "trial": "grad(TEMP)",
+                        "coeff": "kt",
+                        "test": "grad(TEMP)"
+                    },
+                    {
+                        "trial": "dt(TEMP)",
+                        "coeff": "rho_cp",
+                        "test": "TEMP"
+                    }
+                ],
+                "F": [
+                    {
+                        "coeff": "QV",
+                        "test": "TEMP"
+                    }
+                ]
+            },
+            "nodal_fields": {
+                "HFLUX": {}
+            },
+            "nodal_kernels": {
+                "HFLUX": [
+                    {
+                        "trial": "grad(TEMP)",
+                        "coeff": "-kt"
+                    }
+                ]
+            },
+            "element_fields": {
+                "TC": {},
+                "GRADT": {},
+                "HFLUX": {}
+            },
+            "element_kernels": {
+                "TC": [
+                    {
+                        "trial": "TEMP"
+                    }
+                ],
+                "GRADT": [
+                    {
+                        "trial": "grad(TEMP)"
+                    }
+                ],
+                "HFLUX": [
+                    {
+                        "trial": "grad(TEMP)",
+                        "coeff": "-kt"
+                    }
+                ]
+            }
+        },
+        "TH3D_nodal": {
+            "dimension": 3,
+            "domains": [
+                "THERMAL"
+            ],
+            "time_order": 1,
+            "parameters": {
+                "mat.kt[][]": {},
+                "mat.rho_cp": {
+                    "default": 0
+                },
+                "me.QV": {},
+                "mn.HEAT": {}
+            },
+            "dof_fields": {
+                "TEMP": {
+                    "nodal_loads": "HEAT"
+                }
+            },
+            "dof_kernels": {
+                "K": [
+                    {
+                        "trial": "grad(TEMP)",
+                        "coeff": "kt",
+                        "test": "grad(TEMP)"
+                    },
+                    {
+                        "trial": "dt(TEMP)",
+                        "coeff": "rho_cp",
+                        "test": "TEMP"
+                    }
+                ],
+                "F": [
+                    {
+                        "coeff": "QV",
+                        "test": "TEMP"
+                    }
+                ]
+            },
+            "nodal_fields": {
+                "HFLUX": {}
+            },
+            "nodal_kernels": {
+                "HFLUX": [
+                    {
+                        "trial": "grad(TEMP)",
+                        "coeff": "-kt"
+                    }
+                ]
+            },
+            "element_fields": {
+                "TC": {},
+                "GRADT": {},
+                "HFLUX": {}
+            },
+            "element_kernels": {
+                "TC": [
+                    {
+                        "trial": "TEMP"
+                    }
+                ],
+                "GRADT": [
+                    {
+                        "trial": "grad(TEMP)"
+                    }
+                ],
+                "HFLUX": [
+                    {
+                        "trial": "grad(TEMP)",
+                        "coeff": "-kt"
+                    }
+                ]
+            }
+        },
+        "EL2D_nodal": {
+            "dimension": 2,
+            "domains": [
+                "ELASTIC"
+            ],
+            "time_order": 0,
+            "out_of_plane_length": "thickness",
+            "parameters": {
+                "mat.Ey": {},
+                "mat.nu_p": {},
+                "me.FB": {},
+                "mn.FORCE": {},
+                "rc.thickness": {
+                    "default": 1
+                },
+                "rc.plane_stress": {
+                    "default": 0
+                }
+            },
+            "expressions": {
+                "mu_l": "Ey / (2 * (1 + nu_p))",
+                "lambda_3d": "Ey * nu_p / ((1 + nu_p) * (1 - 2 * nu_p))",
+                "lambda_l": "plane_stress > 0.5 ? 2 * lambda_3d * mu_l / (lambda_3d + 2 * mu_l) : lambda_3d",
+                "two_mu": "2 * mu_l",
+                "two_mu_ex[]": "two_mu * RealVectorValue(1, 0, 0)",
+                "lambda_ex[]": "lambda_l * RealVectorValue(1, 0, 0)",
+                "two_mu_ey[]": "two_mu * RealVectorValue(0, 1, 0)",
+                "lambda_ey[]": "lambda_l * RealVectorValue(0, 1, 0)",
+                "two_mu_ez[]": "two_mu * RealVectorValue(0, 0, 1)",
+                "lambda_ez[]": "(plane_stress > 0.5 ? 0.0 : lambda_3d) * RealVectorValue(0, 0, 1)",
+                "ex[]": "RealVectorValue(1, 0, 0)",
+                "ey[]": "RealVectorValue(0, 1, 0)",
+                "ez[]": "RealVectorValue(0, 0, 1)",
+                "eps_zz_ez[]": "(plane_stress > 0.5 ? -nu_p / (1 - nu_p) : 0.0) * RealVectorValue(0, 0, 1)"
+            },
+            "dof_fields": {
+                "U": {
+                    "nodal_loads": "FORCE",
+                    "active_components": [
+                        "x",
+                        "y"
+                    ]
+                }
+            },
+            "dof_kernels": {
+                "K": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu",
+                        "test": "sym_grad(U)"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_l",
+                        "test": "div(U)"
+                    }
+                ],
+                "F": [
+                    {
+                        "coeff": "FB",
+                        "test": "U"
+                    }
+                ]
+            },
+            "element_fields": {
+                "SX": {},
+                "SY": {},
+                "SZ": {
+                    "active_components": [
+                        "z"
+                    ]
+                },
+                "EX": {},
+                "EY": {},
+                "EZ": {
+                    "active_components": [
+                        "z"
+                    ]
+                }
+            },
+            "element_kernels": {
+                "SX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ex"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ex"
+                    }
+                ],
+                "SY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ey"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ey"
+                    }
+                ],
+                "SZ": [
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ez"
+                    }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "div(U)",
+                        "coeff": "eps_zz_ez"
+                    }
+                ]
+            },
+            "nodal_fields": {
+                "SX": {},
+                "SY": {},
+                "SZ": {
+                    "active_components": [
+                        "z"
+                    ]
+                },
+                "EX": {},
+                "EY": {},
+                "EZ": {
+                    "active_components": [
+                        "z"
+                    ]
+                }
+            },
+            "nodal_kernels": {
+                "SX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ex"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ex"
+                    }
+                ],
+                "SY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ey"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ey"
+                    }
+                ],
+                "SZ": [
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ez"
+                    }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "div(U)",
+                        "coeff": "eps_zz_ez"
+                    }
+                ]
+            }
+        },
+        "EL3D_nodal": {
+            "dimension": 3,
+            "domains": [
+                "ELASTIC"
+            ],
+            "time_order": 0,
+            "parameters": {
+                "mat.Ey": {},
+                "mat.nu_p": {},
+                "me.FB": {},
+                "mn.FORCE": {}
+            },
+            "expressions": {
+                "mu_l": "Ey / (2 * (1 + nu_p))",
+                "lambda_3d": "Ey * nu_p / ((1 + nu_p) * (1 - 2 * nu_p))",
+                "lambda_l": "lambda_3d",
+                "two_mu": "2 * mu_l",
+                "two_mu_ex[]": "two_mu * RealVectorValue(1, 0, 0)",
+                "lambda_ex[]": "lambda_l * RealVectorValue(1, 0, 0)",
+                "two_mu_ey[]": "two_mu * RealVectorValue(0, 1, 0)",
+                "lambda_ey[]": "lambda_l * RealVectorValue(0, 1, 0)",
+                "two_mu_ez[]": "two_mu * RealVectorValue(0, 0, 1)",
+                "lambda_ez[]": "lambda_l * RealVectorValue(0, 0, 1)",
+                "ex[]": "RealVectorValue(1, 0, 0)",
+                "ey[]": "RealVectorValue(0, 1, 0)",
+                "ez[]": "RealVectorValue(0, 0, 1)"
+            },
+            "dof_fields": {
+                "U": {
+                    "nodal_loads": "FORCE"
+                }
+            },
+            "dof_kernels": {
+                "K": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu",
+                        "test": "sym_grad(U)"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_l",
+                        "test": "div(U)"
+                    }
+                ],
+                "F": [
+                    {
+                        "coeff": "FB",
+                        "test": "U"
+                    }
+                ]
+            },
+            "element_fields": {
+                "SX": {},
+                "SY": {},
+                "SZ": {},
+                "EX": {},
+                "EY": {},
+                "EZ": {}
+            },
+            "element_kernels": {
+                "SX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ex"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ex"
+                    }
+                ],
+                "SY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ey"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ey"
+                    }
+                ],
+                "SZ": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ez"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ez"
+                    }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ez"
+                    }
+                ]
+            },
+            "nodal_fields": {
+                "SX": {},
+                "SY": {},
+                "SZ": {},
+                "EX": {},
+                "EY": {},
+                "EZ": {}
+            },
+            "nodal_kernels": {
+                "SX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ex"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ex"
+                    }
+                ],
+                "SY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ey"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ey"
+                    }
+                ],
+                "SZ": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "two_mu_ez"
+                    },
+                    {
+                        "trial": "div(U)",
+                        "coeff": "lambda_ez"
+                    }
+                ],
+                "EX": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ex"
+                    }
+                ],
+                "EY": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ey"
+                    }
+                ],
+                "EZ": [
+                    {
+                        "trial": "sym_grad(U)",
+                        "coeff": "ez"
+                    }
+                ]
+            }
         }
     }
 }

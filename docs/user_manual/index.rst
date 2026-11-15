@@ -23,6 +23,7 @@ All quantities are in SI units (m, kg, s, A, V, T, Ohm m). The mesh coordinates 
    couplings
    coordinate_systems
    nonlinear
+   thermomech
    analysis
    solver_settings
    outputs

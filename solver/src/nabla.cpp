@@ -88,6 +88,7 @@ namespace pytec3d
                 return;
             }
             case Operator::Div:
+            case Operator::SymGrad:
                 break;
             }
             fail("operator not defined on a scalar FE.");
@@ -159,6 +160,20 @@ namespace pytec3d
                                 table[qp][c * n + j](c, k) = fe.dphi[qp][j](k);
                 return;
             }
+            case Operator::SymGrad:
+            {
+                // (grad u + grad u^T) / 2 of the shape function phi_j e_c.
+                auto &table = shaped<RealTensorValue>(out, spec.output, nq, total);
+                for (std::size_t qp = 0; qp < nq; ++qp)
+                    for (unsigned int c = 0; c < vdim; ++c)
+                        for (std::size_t j = 0; j < n; ++j)
+                            for (unsigned int k = 0; k < 3; ++k)
+                            {
+                                table[qp][c * n + j](c, k) += 0.5 * fe.dphi[qp][j](k);
+                                table[qp][c * n + j](k, c) += 0.5 * fe.dphi[qp][j](k);
+                            }
+                return;
+            }
             }
             fail("unknown operator.");
         }
@@ -189,9 +204,10 @@ namespace pytec3d
             }
             case Operator::Div:
             case Operator::Grad:
+            case Operator::SymGrad:
                 break;
             }
-            fail("div and grad are not defined on a Nedelec FE.");
+            fail("div, grad and sym_grad are not defined on a Nedelec FE.");
         }
     } // namespace
 
@@ -222,9 +238,10 @@ namespace pytec3d
                 fe.need_curl = true;
             return;
         }
-        if (spec_->op == Operator::Grad && axisymmetric_ && fe.vdim > 1)
-            fail("grad of a vector field is not defined on axisymmetric elements.");
-        if (spec_->op == Operator::Curl || spec_->op == Operator::Div || (spec_->op == Operator::Grad && !spec_->out_of_plane))
+        if ((spec_->op == Operator::Grad || spec_->op == Operator::SymGrad) && axisymmetric_ && fe.vdim > 1)
+            fail("grad and sym_grad of a vector field are not defined on axisymmetric elements.");
+        if (spec_->op == Operator::Curl || spec_->op == Operator::Div || spec_->op == Operator::SymGrad ||
+            (spec_->op == Operator::Grad && !spec_->out_of_plane))
             fe.need_dphi = true;
     }
 

@@ -596,7 +596,10 @@ class _ModelChecker:
             if not isinstance(variables, (list, tuple)) or not variables:
                 self.problems.append(f"{label}: must be a non-empty list of DOF fields.")
                 continue
-            unknown = [v for v in variables if v not in fields]
+            # "U[x]": one component of a vector field, in the nodal frame of the master node.
+            unknown = [v for v in variables if not isinstance(v, str)
+                       or (v not in fields and not (len(v) > 3 and v[-3] == "[" and v[-1] == "]"
+                                                    and v[-2] in "xyz" and v[:-3] in fields))]
             if unknown:
                 self.problems.append(f"{label}: the DOF fields must be in {sorted(fields)}; got {unknown}.")
 

@@ -109,6 +109,7 @@ namespace pytec3d::formulation
         Grad, ///< On an out-of-plane scalar of a 2D element (active component z): -phi / L e_z, L the out-of-plane length.
         Curl, ///< On a scalar of a 2D element: the curl of the out-of-plane vector phi e_z.
         Div,
+        SymGrad, ///< Of a vector Lagrange field: (grad u + grad u^T) / 2, a tensor.
     };
 
     enum class CoefficientKind : unsigned char

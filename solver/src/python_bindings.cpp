@@ -500,6 +500,7 @@ namespace
         py::list capabilities;
         capabilities.append("lagrange_cells");  // VTK Lagrange cells of any order, option2 up to their order
         capabilities.append("mfem_backend");    // solver_settings["linear"]["backend"] = "mfem"
+        capabilities.append("thermomech");      // the thermal (TH2D/3D_nodal) and linear elastic (EL2D/3D_nodal) types
         out["capabilities"] = capabilities;
         return out;
     }

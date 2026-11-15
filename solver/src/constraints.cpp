@@ -413,7 +413,21 @@ namespace pytec3d
                 const auto it = in.pairs->find(coupling.cp_id);
                 if (it == in.pairs->end() || it->second.empty())
                     continue;
-                const std::vector<unsigned int> variables = coupled_variables(dofs, coupling.variable);
+                // "U[x]": only the x component, in the nodal frame of the master node, of the vector field U:
+                // n . u_slave = n . u_master with n that axis (e.g. a frictionless contact).
+                std::string label = coupling.variable;
+                int only_component = -1;
+                if (label.size() > 3 && label.back() == ']' && label[label.size() - 3] == '[')
+                {
+                    const char axis = label[label.size() - 2];
+                    only_component = axis == 'x' ? 0 : axis == 'y' ? 1 : axis == 'z' ? 2 : -1;
+                    if (only_component < 0)
+                        fail("Dof couplings: '" + label + "': the component is x, y or z.");
+                    label = label.substr(0, label.size() - 3);
+                }
+                const std::vector<unsigned int> variables = coupled_variables(dofs, label);
+                if (only_component >= 0 && (variables.size() != 1 || !dofs.variable(variables[0]).vector_lagrange()))
+                    fail("Dof couplings: '" + coupling.variable + "': a component is coupled only for a vector field.");
                 for (const auto &[master, slave] : it->second)
                     for (const unsigned int v : variables)
                     {
@@ -431,6 +445,33 @@ namespace pytec3d
                             }
                             if (!complete || !owned(second[0]))
                                 continue;
+                            if (only_component >= 0)
+                            {
+                                if (static_cast<unsigned int>(only_component) >= n)
+                                    fail("Dof couplings: '" + coupling.variable + "': the field has no such component on "
+                                         "these (2D) elements.");
+                                const RealTensorValue frame = rotation_of(in, master);
+                                double normal[3];
+                                for (unsigned int j = 0; j < 3; ++j)
+                                    normal[j] = frame(j, static_cast<unsigned int>(only_component));
+                                unsigned int k = 0;
+                                for (unsigned int j = 1; j < n; ++j)
+                                    if (std::abs(normal[j]) > std::abs(normal[k]))
+                                        k = j;
+                                ConstraintRow row;
+                                for (unsigned int j = 0; j < n; ++j)
+                                {
+                                    if (normal[j] == 0.0)
+                                        continue;
+                                    row.masters.emplace_back(first[j], normal[j] / normal[k]);
+                                    if (j != k)
+                                        row.masters.emplace_back(second[j], -normal[j] / normal[k]);
+                                }
+                                sort_row(row);
+                                if (owned(second[k]))
+                                    rows.emplace(second[k], row);
+                                continue;
+                            }
                             const RealTensorValue transform = rotation_of(in, slave) * rotation_of(in, master).transpose();
                             if (n == 2 && !is_rotation_about_z(transform))
                             {

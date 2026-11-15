@@ -51,6 +51,7 @@ namespace pytec3d::kernel
     inline Ten value(Real c, const Ten &u) { return c * u; }
     inline Vec value(const Ten &c, const Vec &u) { return c * u; }
     inline Vec value(const Vec &c, Real u) { return c * u; }
+    inline Vec value(const Vec &c, const Ten &u) { return u * c; } ///< a row of a tensor: u . c (stress rows)
     inline Real value(const Vec &c, const Vec &u) { return c * u; }
 
     inline Real dot(Real t, Real x) { return t * x; }
