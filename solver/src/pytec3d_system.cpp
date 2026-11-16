@@ -386,7 +386,15 @@ bool pyTEC3DDOFSystem<ImplicitSys>::check_update_system_matrix()
             update_matrix = true;
         else
         {
-            const bool dt_differs = std::abs(current_step->dt - old_step->dt) > std::numeric_limits<libMesh::Real>::epsilon();
+            // The same step size to the rounding of the step times: each time carries about eps |t|, so two dt computed
+            // from them (e.g. 10.2802 - 10.2800 and 10.2804 - 10.2802) differ by a few eps |t| although the step is the
+            // same; times accumulated as t += dt drift further (the relative term). Within this the factorization of the
+            // previous step is kept: the matrix differs from it by less than the rounding of the data.
+            const libMesh::Real eps = std::numeric_limits<libMesh::Real>::epsilon();
+            const libMesh::Real dt_tolerance =
+                std::max(8.0 * eps * std::max(std::abs(current_step->time), std::abs(old_step->time)),
+                         1e-10 * std::max(std::abs(current_step->dt), std::abs(old_step->dt)));
+            const bool dt_differs = std::abs(current_step->dt - old_step->dt) > dt_tolerance;
             const auto differs = [](libMesh::Real a, libMesh::Real b)
             { return std::abs(a - b) > std::numeric_limits<libMesh::Real>::epsilon(); };
             const bool scheme_differs = differs(current_step->theta, old_step->theta) ||
