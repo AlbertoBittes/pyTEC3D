@@ -394,7 +394,9 @@ bool pyTEC3DDOFSystem<ImplicitSys>::check_update_system_matrix()
             const libMesh::Real dt_tolerance =
                 std::max(8.0 * eps * std::max(std::abs(current_step->time), std::abs(old_step->time)),
                          1e-10 * std::max(std::abs(current_step->dt), std::abs(old_step->dt)));
-            const bool dt_differs = std::abs(current_step->dt - old_step->dt) > dt_tolerance;
+            // Two static steps: the matrix (K, c_v = c_a = 0) does not depend on dt.
+            const bool dt_matters = current_step->transient_effects || old_step->transient_effects;
+            const bool dt_differs = dt_matters && std::abs(current_step->dt - old_step->dt) > dt_tolerance;
             const auto differs = [](libMesh::Real a, libMesh::Real b)
             { return std::abs(a - b) > std::numeric_limits<libMesh::Real>::epsilon(); };
             const bool scheme_differs = differs(current_step->theta, old_step->theta) ||
