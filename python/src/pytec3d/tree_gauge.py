@@ -26,6 +26,8 @@ import numpy as np
 from vtkmodules.util import numpy_support as vtknp
 from vtkmodules.vtkCommonCore import VTK_INT, vtkIntArray
 from vtkmodules.vtkCommonDataModel import (
+    VTK_LAGRANGE_HEXAHEDRON,
+    VTK_LAGRANGE_WEDGE,
     VTK_QUADRATIC_EDGE,
     VTK_QUADRATIC_HEXAHEDRON,
     VTK_QUADRATIC_PYRAMID,
@@ -64,6 +66,12 @@ EDGE_TABLES: dict[int, tuple[tuple[tuple[int, int], ...], tuple[int, ...]]] = {
         (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19),
     ),
 }
+# The VTK Lagrange hexahedron of 27 points and wedge of 21 points (order 2) start with the points of quadratic cells.
+EDGE_TABLES[VTK_LAGRANGE_HEXAHEDRON] = EDGE_TABLES[VTK_QUADRATIC_HEXAHEDRON]
+EDGE_TABLES[VTK_LAGRANGE_WEDGE] = EDGE_TABLES[VTK_QUADRATIC_WEDGE]
+
+#: Point count of the cell types of :data:`EDGE_TABLES` of variable order (the VTK Lagrange cells): order 2 only.
+LAGRANGE_POINTS: dict[int, int] = {VTK_LAGRANGE_HEXAHEDRON: 27, VTK_LAGRANGE_WEDGE: 21}
 
 _MAX_EDGES_PER_CELL = 16
 
@@ -81,8 +89,11 @@ def _cell_edges(mesh: vtkUnstructuredGrid) -> tuple[np.ndarray, np.ndarray, np.n
     offsets, connectivity = meshes.cell_connectivity(mesh)
     types = meshes.cell_types(mesh)
     keys, v0, v1, mid = [], [], [], []
+    tabled = np.isin(types, list(EDGE_TABLES))
+    for cell_type, n_points in LAGRANGE_POINTS.items():   # another order: not a cell of the tables
+        tabled &= (types != cell_type) | (np.diff(offsets) == n_points)
     for cell_type, (pairs, mids) in EDGE_TABLES.items():
-        cells = np.flatnonzero(types == cell_type)
+        cells = np.flatnonzero((types == cell_type) & tabled)
         if cells.size == 0:
             continue
         starts = offsets[cells][:, np.newaxis]
@@ -91,7 +102,7 @@ def _cell_edges(mesh: vtkUnstructuredGrid) -> tuple[np.ndarray, np.ndarray, np.n
         v0.append(connectivity[starts + local[:, 0]].ravel())
         v1.append(connectivity[starts + local[:, 1]].ravel())
         mid.append(connectivity[starts + np.asarray(mids)].ravel())
-    unsupported_types, counts = np.unique(types[~np.isin(types, list(EDGE_TABLES))], return_counts=True)
+    unsupported_types, counts = np.unique(types[~tabled], return_counts=True)
     skipped = {int(t): int(c) for t, c in zip(unsupported_types, counts, strict=True)}
     if not keys:
         empty = np.empty(0, dtype=np.int64)

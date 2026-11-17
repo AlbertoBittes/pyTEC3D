@@ -98,6 +98,8 @@ namespace pytec3d
         constexpr int BIQUADRATIC_QUAD = 28;
         constexpr int TRIQUADRATIC_HEXAHEDRON = 29;
         constexpr int BIQUADRATIC_QUADRATIC_WEDGE = 32;
+        constexpr int LAGRANGE_HEXAHEDRON = 72; ///< Read with 27 points only (order 2): HEX27.
+        constexpr int LAGRANGE_WEDGE = 73;      ///< Read with 21 points only (order 2): PRISM21.
     } // namespace cell_type
 
     /** @brief The mesh: points and cells (see the file comment). */

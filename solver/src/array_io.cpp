@@ -13,9 +13,11 @@
 
 #include <libmesh/elem.h>
 #include <libmesh/enum_io_package.h>
+#include <libmesh/enum_to_string.h>
 #include <libmesh/equation_systems.h>
 #include <libmesh/fe_interface.h>
 #include <libmesh/mesh_base.h>
+#include <libmesh/node.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/system.h>
 #include <libmesh/dof_map.h>
@@ -24,6 +26,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <map>
+#include <mutex>
 #include <numeric>
 #include <set>
 #include <tuple>
@@ -43,9 +47,62 @@ namespace pytec3d
             logging::error_and_abort(message);
         }
 
-        /** @brief The libMesh element of a VTK cell type (Lagrange mapping). */
-        ElemType elem_type_of(std::int64_t vtk_type, std::size_t cell)
+        /**
+         * @brief The libMesh node of each point of the VTK cell of an element type, from libMesh's VTK connectivity
+         * (which lists the libMesh nodes in the VTK order), computed once per type on an element of nodes 0, 1...
+         */
+        const std::vector<unsigned int> &vtk_to_libmesh(ElemType type)
         {
+            static std::mutex mutex;
+            static std::map<ElemType, std::vector<unsigned int>> maps;
+            const std::lock_guard<std::mutex> lock(mutex);
+            if (const auto it = maps.find(type); it != maps.end())
+                return it->second;
+
+            auto elem = libMesh::Elem::build(type);
+            std::vector<libMesh::Node> nodes;
+            nodes.reserve(elem->n_nodes());
+            for (auto j : elem->node_index_range())
+            {
+                nodes.emplace_back(0.0, 0.0, 0.0, static_cast<dof_id_type>(j));
+                elem->set_node(j) = &nodes.back();
+            }
+            std::vector<dof_id_type> conn;
+            elem->connectivity(0, libMesh::VTK, conn);
+            if (conn.size() != elem->n_nodes())
+                fail("Mesh import: libMesh's VTK connectivity of " + libMesh::Utility::enum_to_string(type) + " has " +
+                     std::to_string(conn.size()) + " nodes, the element " + std::to_string(elem->n_nodes()) + ".");
+            std::vector<unsigned int> map(conn.begin(), conn.end());
+            std::vector<bool> seen(map.size(), false);
+            for (const unsigned int j : map)
+            {
+                if (j >= map.size() || seen[j])
+                    fail("Mesh import: libMesh's VTK connectivity of " + libMesh::Utility::enum_to_string(type) +
+                         " is not a node permutation.");
+                seen[j] = true;
+            }
+            return maps.emplace(type, std::move(map)).first->second;
+        }
+
+        /** @brief The point count a VTK Lagrange cell type is read with (order 2), 0 for the other types. */
+        std::int64_t lagrange_points(std::int64_t vtk_type)
+        {
+            switch (vtk_type)
+            {
+            case cell_type::LAGRANGE_HEXAHEDRON: return 27;
+            case cell_type::LAGRANGE_WEDGE: return 21;
+            default: return 0;
+            }
+        }
+
+        /** @brief The libMesh element of a VTK cell type (Lagrange mapping) of @p n_points points. */
+        ElemType elem_type_of(std::int64_t vtk_type, std::int64_t n_points, std::size_t cell)
+        {
+            if (const std::int64_t n = lagrange_points(vtk_type); n != 0 && n_points != n)
+                fail("Mesh import: cell " + std::to_string(cell) + " is a VTK Lagrange " +
+                     (vtk_type == cell_type::LAGRANGE_HEXAHEDRON ? "hexahedron" : "wedge") + " of " +
+                     std::to_string(n_points) + " points: only the Lagrange hexahedra of 27 points (HEX27) and wedges "
+                     "of 21 points (PRISM21) are supported.");
             switch (vtk_type)
             {
             case cell_type::LINE: return libMesh::EDGE2;
@@ -65,6 +122,8 @@ namespace pytec3d
             case cell_type::BIQUADRATIC_QUADRATIC_WEDGE: return libMesh::PRISM18;
             case cell_type::PYRAMID: return libMesh::PYRAMID5;
             case cell_type::QUADRATIC_PYRAMID: return libMesh::PYRAMID13;
+            case cell_type::LAGRANGE_HEXAHEDRON: return libMesh::HEX27;
+            case cell_type::LAGRANGE_WEDGE: return libMesh::PRISM21;
             default:
                 fail("Mesh import: cell " + std::to_string(cell) + " has the VTK cell type " + std::to_string(vtk_type) +
                      ", which the solver does not support.");
@@ -263,13 +322,14 @@ namespace pytec3d
                            static_cast<dof_id_type>(i));
 
         std::array<bool, 4> elems_of_dimension{};
-        std::vector<dof_id_type> conn;
+        ElemType last_type = libMesh::INVALID_ELEM;
+        const std::vector<unsigned int> *to_libmesh = nullptr;
         const std::size_t n_cells = view.n_cells();
         for (std::size_t i = 0; i < n_cells; ++i)
         {
-            auto elem = libMesh::Elem::build(elem_type_of(view.cell_types(i), i));
             const std::int64_t begin = view.offsets(i);
             const std::int64_t n_cell_points = view.offsets(i + 1) - begin;
+            auto elem = libMesh::Elem::build(elem_type_of(view.cell_types(i), n_cell_points, i));
             if (n_cell_points != static_cast<std::int64_t>(elem->n_nodes()))
                 fail("Mesh import: cell " + std::to_string(i) + " has " + std::to_string(n_cell_points) +
                      " points, its cell type " + std::to_string(elem->n_nodes()) + ".");
@@ -280,13 +340,17 @@ namespace pytec3d
                 if (point < 0 || static_cast<std::size_t>(point) >= n_points)
                     fail("Mesh import: cell " + std::to_string(i) + " refers to the point " + std::to_string(point) +
                          ", out of range.");
-                elem->set_node(j) = mesh.node_ptr(static_cast<dof_id_type>(point));
             }
 
-            // The node order of the VTK cell, in libMesh order.
-            elem->connectivity(0, libMesh::VTK, conn);
-            for (unsigned int j = 0, n_conn = libMesh::cast_int<unsigned int>(conn.size()); j != n_conn; ++j)
-                elem->set_node(j) = mesh.node_ptr(conn[j]);
+            // The node order of the VTK cell, in libMesh order: libMesh node to_libmesh[k] is VTK point k.
+            if (elem->type() != last_type)
+            {
+                last_type = elem->type();
+                to_libmesh = &vtk_to_libmesh(last_type);
+            }
+            for (unsigned int k = 0, n = libMesh::cast_int<unsigned int>(to_libmesh->size()); k != n; ++k)
+                elem->set_node((*to_libmesh)[k]) = mesh.node_ptr(
+                    static_cast<dof_id_type>(view.connectivity(static_cast<std::size_t>(begin) + k)));
 
             elem->set_id(static_cast<dof_id_type>(i));
             elem->subdomain_id() = static_cast<libMesh::subdomain_id_type>(type_ids(i));

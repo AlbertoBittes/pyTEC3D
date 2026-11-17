@@ -40,9 +40,11 @@ Supported cells
      - ``VTK_TETRA``, ``VTK_HEXAHEDRON``, ``VTK_WEDGE``, ``VTK_PYRAMID``
      - ``VTK_QUADRATIC_TETRA`` (TET10), ``VTK_QUADRATIC_HEXAHEDRON`` (HEX20), ``VTK_TRIQUADRATIC_HEXAHEDRON`` (HEX27),
        ``VTK_QUADRATIC_WEDGE`` (PRISM15), ``VTK_BIQUADRATIC_QUADRATIC_WEDGE`` (PRISM18), ``VTK_QUADRATIC_PYRAMID``
-       (PYRAMID13)
+       (PYRAMID13), ``VTK_LAGRANGE_HEXAHEDRON`` of 27 points (HEX27), ``VTK_LAGRANGE_WEDGE`` of 21 points (PRISM21)
 
-Lines and some Bezier cells are also read. Rules:
+Lines and some Bezier cells are also read. VTK Lagrange cells are read at order 2 only, and only as hexahedra and
+wedges (with their face and cell centres): VTK has no Lagrange tetrahedron of 14 points nor pyramid matching libMesh's
+TET14 and PYRAMID18. Rules:
 
 * All the cells of a model have the dimension of its element type: 2D cells for a 2D element type, 3D cells for a 3D
   one (no mixed 2D / 3D meshes).

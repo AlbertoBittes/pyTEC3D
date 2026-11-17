@@ -61,7 +61,11 @@ CELL_VERTICES: dict[int, int] = {
     12: 8, 25: 8, 29: 8,        # hexahedron, quadratic hexahedron, triquadratic hexahedron
     13: 6, 26: 6, 32: 6,        # wedge, quadratic wedge, biquadratic-quadratic wedge
     14: 5, 27: 5,               # pyramid, quadratic pyramid
+    72: 8, 73: 6,               # Lagrange hexahedron (27 points: HEX27), Lagrange wedge (21 points: PRISM21)
 }
+
+#: The VTK Lagrange cell types the solver reads (hexahedron, wedge): order 2 only (the solver checks the point counts).
+LAGRANGE_CELLS: tuple[int, ...] = (72, 73)
 
 #: NumPy types of the views, by role.
 REAL = np.dtype(np.float64)
@@ -98,6 +102,30 @@ def _cell_types_array(mesh: vtkUnstructuredGrid) -> Any:
     return array if array is not None and hasattr(array, "GetNumberOfTuples") else mesh.GetCellTypesArray()
 
 
+def _check_lagrange_degrees(mesh: vtkUnstructuredGrid) -> None:
+    """The VTK Lagrange cells of the mesh are of order 2 in every direction.
+
+    The solver tells their order by the point count, which an explicit ``HigherOrderDegrees`` cell array can contradict
+    (21 points are also a wedge of degrees (1, 1, 6)).
+
+    Raises:
+        ValueError: If a Lagrange cell has degrees other than (2, 2, 2).
+    """
+    degrees = mesh.GetCellData().GetHigherOrderDegrees()
+    if degrees is None:
+        return
+    types = np.asarray(vtknp.vtk_to_numpy(_cell_types_array(mesh)))
+    lagrange = np.flatnonzero(np.isin(types, LAGRANGE_CELLS))
+    if lagrange.size == 0:
+        return
+    values = np.asarray(vtknp.vtk_to_numpy(degrees)).reshape(types.size, -1)[lagrange]
+    wrong = lagrange[np.any(values != 2, axis=1)]
+    if wrong.size:
+        raise ValueError(f"{wrong.size} VTK Lagrange cells (first: cell {int(wrong[0])}) have the degrees "
+                         f"{tuple(int(v) for v in values[np.searchsorted(lagrange, wrong[0])])} in the cell array "
+                         f"'{degrees.GetName()}': the solver reads Lagrange hexahedra and wedges of order 2 only.")
+
+
 def mesh_views(mesh: vtkUnstructuredGrid) -> dict[str, np.ndarray]:
     """Views of the points (float64), the cell offsets and connectivity (int64) and the cell types (uint8).
 
@@ -106,6 +134,7 @@ def mesh_views(mesh: vtkUnstructuredGrid) -> dict[str, np.ndarray]:
     """
     if mesh.GetPoints() is None:
         raise ValueError("The mesh has no points.")
+    _check_lagrange_degrees(mesh)
     cells = mesh.GetCells()
     return {
         "points": _typed_view(mesh.GetPoints().GetData(), REAL, "The points of the mesh"),
