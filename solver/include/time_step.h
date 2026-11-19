@@ -113,6 +113,23 @@ struct StepReport
     double seconds_nodal_fields = 0.0;
     double seconds_element_fields = 0.0;
     double seconds_output = 0.0;
+    // the parts of seconds_solve: the assemblies of the Newton iterations (Jacobian with residual / residual only,
+    // e.g. the line search) and of the linear solves (the reduced matrix, the factorization, the solve)
+    double seconds_jacobian = 0.0;
+    double seconds_residual = 0.0;
+    // the parts of these assemblies: J = K_eff (zero + copy), R = K_eff u - F, the law terms of the elements (tangent
+    // and residual, threads), their insertion into the global matrix / vector, the closing (and residual projection)
+    double seconds_assembly_jacobian_init = 0.0;
+    double seconds_assembly_residual_init = 0.0;
+    double seconds_assembly_elements = 0.0;
+    double seconds_assembly_insertion = 0.0;
+    double seconds_assembly_close = 0.0;
+    std::size_t law_elements = 0;
+    unsigned int jacobian_assemblies = 0;
+    unsigned int residual_assemblies = 0;
+    double seconds_ptap = 0.0;
+    double seconds_factorization = 0.0;
+    double seconds_linear_solve = 0.0;
 };
 
 /** @brief The coefficients of v and a in u and in the state at the start of the step (see the file comment). */

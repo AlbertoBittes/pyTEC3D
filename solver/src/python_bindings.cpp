@@ -426,7 +426,20 @@ namespace
         seconds["nodal_fields"] = r.seconds_nodal_fields;
         seconds["element_fields"] = r.seconds_element_fields;
         seconds["output"] = r.seconds_output;
+        seconds["jacobian"] = r.seconds_jacobian;
+        seconds["residual"] = r.seconds_residual;
+        seconds["assembly_jacobian_init"] = r.seconds_assembly_jacobian_init;
+        seconds["assembly_residual_init"] = r.seconds_assembly_residual_init;
+        seconds["assembly_elements"] = r.seconds_assembly_elements;
+        seconds["assembly_insertion"] = r.seconds_assembly_insertion;
+        seconds["assembly_close"] = r.seconds_assembly_close;
+        seconds["ptap"] = r.seconds_ptap;
+        seconds["factorization"] = r.seconds_factorization;
+        seconds["linear_solve"] = r.seconds_linear_solve;
         out["seconds"] = seconds;
+        out["jacobian_assemblies"] = r.jacobian_assemblies;
+        out["residual_assemblies"] = r.residual_assemblies;
+        out["law_elements"] = r.law_elements;
         return out;
     }
 

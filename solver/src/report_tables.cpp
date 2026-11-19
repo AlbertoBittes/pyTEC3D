@@ -598,7 +598,21 @@ namespace pytec3d::report
         }
         table.section("Wall time (s)")
             .row({"Element matrices", seconds(report.seconds_element_matrices)})
-            .row({"Assembly and solve", seconds(report.seconds_solve)})
+            .row({"Assembly and solve", seconds(report.seconds_solve)});
+        if (report.jacobian_assemblies > 0)
+            table.row({fmt::format("  Jacobian + residual ({})", report.jacobian_assemblies), seconds(report.seconds_jacobian)});
+        if (report.residual_assemblies > 0)
+            table.row({fmt::format("  residual only ({})", report.residual_assemblies), seconds(report.seconds_residual)});
+        if (report.jacobian_assemblies + report.residual_assemblies > 0)
+            table.row({"    J = K_eff (zero, copy)", seconds(report.seconds_assembly_jacobian_init)})
+                .row({"    R = K_eff u - F", seconds(report.seconds_assembly_residual_init)})
+                .row({fmt::format("    law elements ({}, tangent + residual)", report.law_elements),
+                      seconds(report.seconds_assembly_elements)})
+                .row({"    insertion (add_matrix / add_vector)", seconds(report.seconds_assembly_insertion)})
+                .row({"    close, residual projection", seconds(report.seconds_assembly_close)});
+        table.row({"  reduced matrix (P^T A P)", seconds(report.seconds_ptap)})
+            .row({"  factorization / preconditioner", seconds(report.seconds_factorization)})
+            .row({"  linear solve", seconds(report.seconds_linear_solve)})
             .row({"Nodal fields", seconds(report.seconds_nodal_fields)})
             .row({"Element fields", seconds(report.seconds_element_fields)})
             .row({"Output to the grid", seconds(report.seconds_output)})

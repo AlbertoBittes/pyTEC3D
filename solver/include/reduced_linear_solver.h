@@ -44,6 +44,9 @@ public:
         unsigned int full = 0;
         unsigned int numeric = 0;
         unsigned int reused = 0;
+        double seconds_ptap = 0.0;          ///< P^T A P (the reduced matrix).
+        double seconds_factorization = 0.0; ///< KSPSetUp: the preconditioner / the factorization (MUMPS).
+        double seconds_linear_solve = 0.0;  ///< KSPSolve after the setup: the triangular solves or the iterations.
     };
 
     explicit ReducedPetscLinearSolver(const libMesh::Parallel::Communicator &comm);

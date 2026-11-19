@@ -2,6 +2,7 @@
  * @file pytec3d_system.cpp
  * @brief pyTEC3DSystemBase and concrete system implementations.
  */
+#include <chrono>
 #include "pytec3d_system.h"
 
 #include <algorithm>
@@ -701,6 +702,9 @@ void pyTEC3DLinearSystem::solve()
     const std::pair<unsigned int, libMesh::Real> rval = solver.solve(*this->matrix, *this->solution, *this->rhs, tol, maxits);
     report.full_factorizations += solver.counts().full - before.full;
     report.numeric_factorizations += solver.counts().numeric - before.numeric;
+    report.seconds_ptap += solver.counts().seconds_ptap - before.seconds_ptap;
+    report.seconds_factorization += solver.counts().seconds_factorization - before.seconds_factorization;
+    report.seconds_linear_solve += solver.counts().seconds_linear_solve - before.seconds_linear_solve;
     report.true_residual = pytec3d::diagnostics::relative_true_residual(solver.reduced_matrix(), solver.reduced_solution(),
                                                                         solver.reduced_rhs());
     report.factorization = pytec3d::diagnostics::factorization_report(solver.ksp());
@@ -873,6 +877,7 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
         if (update_matrix)
             this->update_effective_matrix();
     }
+    const auto t_assembly = std::chrono::steady_clock::now();
     if (assemble_jacobian && assemble_residual)
         pytec3d::logging::info("Building global Jacobian and residual");
     else if (assemble_jacobian)
@@ -888,6 +893,11 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
         libMesh::DenseVector<libMesh::Number> residual;
     };
     const std::vector<const libMesh::Elem *> &elements = this->law_elements();
+    StepReport &timing = equation_systems.step_report();
+    using clock = std::chrono::steady_clock;
+    const auto since = [](clock::time_point t0) { return std::chrono::duration<double>(clock::now() - t0).count(); };
+    timing.law_elements = elements.size();
+    auto t0 = clock::now();
     if (assemble_jacobian)
     {
         // J = K_eff + J_laws: the same pattern (the sparsity of the DofMap).
@@ -895,12 +905,15 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
         jacobian.close();
         jacobian.add(1.0, keff);
     }
+    timing.seconds_assembly_jacobian_init += since(t0);
+    t0 = clock::now();
     if (assemble_residual)
     {
         // R = K_eff u - F (+ R_laws): the residual the Newton step u <- u - du drives to zero.
         keff.vector_mult(*system.rhs, *system.solution);
         system.rhs->add(-1.0, system.get_vector("linear_rhs"));
     }
+    timing.seconds_assembly_residual_init += since(t0);
     const bool picard = equation_systems.get_solver_settings().nonlinear.picard;
     std::vector<Built> built;
     for (std::size_t begin = 0; begin < elements.size(); begin += kChunk)
@@ -908,6 +921,7 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
         const std::size_t end = std::min(elements.size(), begin + kChunk);
         built.clear();
         built.resize(end - begin);
+        t0 = clock::now();
         parallel_elements(begin, end, [&] { return ElementBuilder(&equation_systems); },
                           [&](ElementBuilder &builder, std::size_t i)
                           {
@@ -935,6 +949,8 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
                                   }
                               }
                           });
+        timing.seconds_assembly_elements += since(t0);
+        t0 = clock::now();
         for (std::size_t i = begin; i < end; ++i)
         {
             const Built &out = built[i - begin];
@@ -943,7 +959,9 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
             if (assemble_residual)
                 system.rhs->add_vector(out.residual, out.dofs);
         }
+        timing.seconds_assembly_insertion += since(t0);
     }
+    t0 = clock::now();
     if (assemble_jacobian)
         jacobian.close();
     if (assemble_residual)
@@ -951,6 +969,21 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
         system.rhs->close();
         // P^T R at the unconstrained DOFs, 0 at the constrained ones: the residual (and its norm) of the reduced system.
         this->reduced_linear_solver().project_residual(*system.rhs);
+    }
+    timing.seconds_assembly_close += since(t0);
+    {
+        StepReport &report = equation_systems.step_report();
+        const double dt = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_assembly).count();
+        if (assemble_jacobian)
+        {
+            report.seconds_jacobian += dt;
+            ++report.jacobian_assemblies;
+        }
+        else
+        {
+            report.seconds_residual += dt;
+            ++report.residual_assemblies;
+        }
     }
     if (assemble_jacobian && assemble_residual)
         pytec3d::logging::info("Newton iteration: Jacobian and residual assembled.");
@@ -1067,8 +1100,12 @@ void pyTEC3DNonLinearSystem::solve()
     const ReducedPetscLinearSolver::Counts before = this->reduced_linear_solver().counts();
     this->assemble_rhs(this->get_vector("linear_rhs"));
     libMesh::NonlinearImplicitSystem::solve();
-    report.full_factorizations += this->reduced_linear_solver().counts().full - before.full;
-    report.numeric_factorizations += this->reduced_linear_solver().counts().numeric - before.numeric;
+    const ReducedPetscLinearSolver::Counts &after = this->reduced_linear_solver().counts();
+    report.full_factorizations += after.full - before.full;
+    report.numeric_factorizations += after.numeric - before.numeric;
+    report.seconds_ptap += after.seconds_ptap - before.seconds_ptap;
+    report.seconds_factorization += after.seconds_factorization - before.seconds_factorization;
+    report.seconds_linear_solve += after.seconds_linear_solve - before.seconds_linear_solve;
     // The last iterate: libMesh stops after the residual of the last step, without assembling the Jacobian again.
     if (previous_iterate_)
     {

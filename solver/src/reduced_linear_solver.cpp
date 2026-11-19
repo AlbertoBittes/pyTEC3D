@@ -2,6 +2,7 @@
  * @file reduced_linear_solver.cpp
  * @brief ReducedPetscLinearSolver: constraints as a prolongation P, the reduced system P^T A P (reduced_linear_solver.h).
  */
+#include <chrono>
 #include "reduced_linear_solver.h"
 
 #include <algorithm>
@@ -223,6 +224,7 @@ std::pair<unsigned int, libMesh::Real> ReducedPetscLinearSolver::solve(libMesh::
     const Factorization level = full ? Factorization::full
                                 : this->same_preconditioner ? Factorization::reused
                                                             : Factorization::numeric;
+    const auto t_ptap = std::chrono::steady_clock::now();
     if (level == Factorization::full)
     {
         reset_ksp();
@@ -238,6 +240,7 @@ std::pair<unsigned int, libMesh::Real> ReducedPetscLinearSolver::solve(libMesh::
     else if (level == Factorization::numeric)
         // The values of the same nonzeros: PETSc keeps the ordering and the analysis of the factorization.
         LibmeshPetscCall(MatPtAP(parent, P_, MAT_REUSE_MATRIX, PETSC_DETERMINE, submat_.get()));
+    counts_.seconds_ptap += std::chrono::duration<double>(std::chrono::steady_clock::now() - t_ptap).count();
 
     // The reduced right-hand side: P^T (b - A g); a Newton step: b, projected already (project_residual()).
     if (homogeneous_)
@@ -264,7 +267,13 @@ std::pair<unsigned int, libMesh::Real> ReducedPetscLinearSolver::solve(libMesh::
     LibmeshPetscCall(KSPSetFromOptions(ksp));
     if (this->_solver_configuration)
         this->_solver_configuration->configure_solver();
+    // the setup apart (the factorization of a direct solver), then the solve
+    const auto t_setup = std::chrono::steady_clock::now();
+    LibmeshPetscCall(KSPSetUp(ksp));
+    const auto t_solve = std::chrono::steady_clock::now();
     LibmeshPetscCall(KSPSolve(ksp, subrhs_, subsolution_));
+    counts_.seconds_factorization += std::chrono::duration<double>(t_solve - t_setup).count();
+    counts_.seconds_linear_solve += std::chrono::duration<double>(std::chrono::steady_clock::now() - t_solve).count();
 
     PetscInt its = 0;
     PetscReal residual = 0.0;
